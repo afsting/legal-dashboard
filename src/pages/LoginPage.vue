@@ -2,8 +2,8 @@
   <div class="login-container">
     <div class="login-card">
       <div class="header">
-        <h1>Penny Page</h1>
-        <p class="subtitle">Demand Development Application</p>
+        <h1>Legal Dashboard</h1>
+        <p class="subtitle">Client & Case Management</p>
       </div>
       
       <div id="google-signin-container" class="google-signin"></div>
