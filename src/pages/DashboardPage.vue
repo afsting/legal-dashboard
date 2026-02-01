@@ -1,37 +1,65 @@
 <template>
   <div class="dashboard">
     <header class="navbar">
-      <h1>Demand Packages</h1>
+      <h1>Legal Dashboard</h1>
       <div class="user-menu">
-        <span>{{ currentUser.email }}</span>
+        <router-link v-if="currentUser?.role === 'admin'" to="/admin/users" class="btn-admin">
+          Admin
+        </router-link>
         <router-link to="/settings" class="btn-settings">Settings</router-link>
         <button @click="handleLogout" class="btn-logout">Logout</button>
       </div>
     </header>
 
     <main class="content">
-      <div class="dashboard-header">
-        <h2>Package Management</h2>
-        <router-link to="/package/create" class="btn-primary">+ New Package</router-link>
+      <div class="welcome-banner">
+        <h2>Welcome to Your Legal Dashboard</h2>
+        <p>Manage your clients, cases, and documents all in one place</p>
       </div>
 
-      <div v-if="packages.length === 0" class="empty-state">
-        <p>No packages yet. Create your first demand package to get started.</p>
-      </div>
+      <div class="dashboard-grid">
+        <router-link to="/clients" class="dashboard-card">
+          <div class="card-icon">👥</div>
+          <h3>Client Management</h3>
+          <p>View and manage all your clients</p>
+          <div class="card-footer">
+            <span class="btn-link">Go to Clients →</span>
+          </div>
+        </router-link>
 
-      <div v-else class="packages-grid">
-        <div v-for="pkg in packages" :key="pkg.id" class="package-card">
-          <div class="card-header">
-            <h3>{{ pkg.name }}</h3>
-            <span class="status-badge" :class="pkg.status">{{ pkg.status }}</span>
+        <router-link v-if="currentUser?.role === 'admin'" to="/admin/users" class="dashboard-card admin-card">
+          <div class="card-icon">👤</div>
+          <h3>User Management</h3>
+          <p>Approve and manage user accounts</p>
+          <div class="card-footer">
+            <span class="btn-link">Manage Users →</span>
           </div>
-          <p class="card-description">{{ pkg.description }}</p>
-          <div class="card-meta">
-            <small>Created: {{ formatDate(pkg.createdAt) }}</small>
+        </router-link>
+
+        <div class="dashboard-card coming-soon">
+          <div class="card-icon">📦</div>
+          <h3>Demand Packages</h3>
+          <p>Create and manage demand packages</p>
+          <div class="card-footer">
+            <span class="coming-soon-badge">Coming Soon</span>
           </div>
-          <div class="card-actions">
-            <router-link :to="`/package/${pkg.id}`" class="btn-link">View Details</router-link>
-            <router-link :to="`/package/${pkg.id}/workflow`" class="btn-link">Document Checklist</router-link>
+        </div>
+
+        <div class="dashboard-card coming-soon">
+          <div class="card-icon">📄</div>
+          <h3>Documents</h3>
+          <p>Upload and organize case documents</p>
+          <div class="card-footer">
+            <span class="coming-soon-badge">Coming Soon</span>
+          </div>
+        </div>
+
+        <div class="dashboard-card coming-soon">
+          <div class="card-icon">📊</div>
+          <h3>Reports</h3>
+          <p>View analytics and insights</p>
+          <div class="card-footer">
+            <span class="coming-soon-badge">Coming Soon</span>
           </div>
         </div>
       </div>
@@ -40,36 +68,22 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../stores/authStore'
-import { usePackageStore } from '../stores/packageStore'
 
 const router = useRouter()
-const { currentUser, logout } = useAuth()
-const { packages } = usePackageStore()
+const { logout, currentUser } = useAuth()
 
 const handleLogout = () => {
   logout()
   router.push({ name: 'Login' })
 }
-
-const formatDate = (date) => {
-  return new Date(date).toLocaleDateString()
-}
-
-onMounted(() => {
-  // Initialize auth to ensure user is loaded
-  const { initializeAuth } = useAuth()
-  initializeAuth()
-})
 </script>
 
 <style scoped>
 .dashboard {
   min-height: 100vh;
   background: #f5f5f5;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 .navbar {
@@ -91,7 +105,6 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 1rem;
-  color: #666;
 }
 
 .btn-settings {
@@ -104,7 +117,6 @@ onMounted(() => {
   cursor: pointer;
   font-size: 14px;
   transition: background 0.2s;
-  display: inline-block;
 }
 
 .btn-settings:hover {
@@ -126,136 +138,121 @@ onMounted(() => {
   background: #c82333;
 }
 
-.content {
-  padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.dashboard-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
-}
-
-.dashboard-header h2 {
-  margin: 0;
-  color: #333;
-}
-
-.btn-primary {
-  padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.btn-admin {
+  padding: 0.5rem 1rem;
+  background: #6610f2;
   color: white;
   border: none;
   border-radius: 4px;
-  text-decoration: none;
   cursor: pointer;
-  font-weight: 600;
-  transition: transform 0.2s;
-  display: inline-block;
+  font-size: 14px;
+  transition: background 0.2s;
+  text-decoration: none;
+  margin-right: 0.5rem;
 }
 
-.btn-primary:hover {
-  transform: translateY(-2px);
+.btn-admin:hover {
+  background: #520dc2;
 }
 
-.empty-state {
+.content {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.welcome-banner {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 3rem 2rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
   text-align: center;
-  padding: 3rem;
-  background: white;
-  border-radius: 8px;
-  color: #666;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
-.packages-grid {
+.welcome-banner h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.welcome-banner p {
+  margin: 0;
+  font-size: 18px;
+  opacity: 0.9;
+}
+
+.dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
 }
 
-.package-card {
+.dashboard-card {
   background: white;
-  border-radius: 8px;
-  padding: 1.5rem;
+  border-radius: 12px;
+  padding: 2rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.package-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.card-header {
+  transition: all 0.3s;
+  text-decoration: none;
+  color: inherit;
   display: flex;
-  justify-content: space-between;
-  align-items: start;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.dashboard-card:not(.coming-soon):hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.2);
+}
+
+.admin-card:hover {
+  box-shadow: 0 8px 16px rgba(102, 16, 242, 0.2);
+}
+
+.dashboard-card.coming-soon {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.card-icon {
+  font-size: 48px;
   margin-bottom: 1rem;
 }
 
-.card-header h3 {
-  margin: 0;
+.dashboard-card h3 {
+  margin: 0 0 0.5rem 0;
   color: #333;
-  flex: 1;
+  font-size: 22px;
 }
 
-.status-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  margin-left: 1rem;
-}
-
-.status-badge.draft {
-  background: #ffeaa7;
-  color: #d63031;
-}
-
-.status-badge.in-progress {
-  background: #a29bfe;
-  color: #2d3436;
-}
-
-.status-badge.completed {
-  background: #55efc4;
-  color: #00b894;
-}
-
-.card-description {
+.dashboard-card p {
+  margin: 0;
   color: #666;
-  margin: 0.5rem 0;
   font-size: 14px;
+  flex-grow: 1;
 }
 
-.card-meta {
-  color: #999;
-  font-size: 12px;
-  margin: 1rem 0;
-}
-
-.card-actions {
-  display: flex;
-  gap: 0.5rem;
+.card-footer {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
 }
 
 .btn-link {
-  flex: 1;
-  padding: 0.5rem;
-  text-align: center;
-  text-decoration: none;
   color: #667eea;
-  border: 1px solid #667eea;
-  border-radius: 4px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.2s;
+  font-weight: 600;
+  font-size: 14px;
 }
 
-.btn-link:hover {
-  background: #f0f2ff;
+.coming-soon-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: #ffc107;
+  color: #333;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
 }
 </style>

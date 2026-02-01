@@ -1,21 +1,25 @@
 <template>
   <div class="file-number-detail">
     <header class="navbar">
-      <h1>File Number: {{ fileNumber?.number }}</h1>
-      <router-link :to="`/client/${$route.params.clientId}`" class="btn-secondary">Back to Client</router-link>
+      <h1>File Number: {{ fileNumber?.fileNumber || 'Loading...' }}</h1>
+      <router-link :to="`/clients/${$route.params.clientId}`" class="btn-secondary">Back to Client</router-link>
     </header>
 
     <main class="content">
-      <div v-if="!fileNumber" class="error-message">
+      <div v-if="loading" class="loading-message">
+        Loading file number details...
+      </div>
+
+      <div v-else-if="error || !fileNumber" class="error-message">
         File number not found
       </div>
 
       <div v-else class="file-info">
         <div class="file-header">
           <div>
-            <h2>{{ fileNumber.number }}</h2>
+            <h2>{{ fileNumber.fileNumber }}</h2>
             <p class="file-subtitle">{{ fileNumber.description || 'No description' }}</p>
-            <p v-if="fileNumber.court" class="file-subtitle">Court: {{ fileNumber.court }}</p>
+            <p class="file-subtitle">Status: {{ fileNumber.status || 'active' }}</p>
           </div>
         </div>
 
@@ -24,13 +28,11 @@
           
           <div class="functions-grid">
             <!-- Demand Packages -->
-            <div class="function-card" @click="goToDemandPackages">
+            <div class="function-card disabled">
               <div class="function-icon">📦</div>
               <h4>Demand Packages</h4>
               <p>Create and manage demand packages for this case</p>
-              <div class="function-count">
-                {{ demandPackagesCount }} packages
-              </div>
+              <div class="function-badge">Coming Soon</div>
             </div>
 
             <!-- Document Management -->
@@ -48,36 +50,22 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useClientStore } from '../stores/clientStore'
-import { usePackageStore } from '../stores/packageStore'
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { useFileNumbers } from '../composables/useFileNumbers'
 
-const router = useRouter()
 const route = useRoute()
-const { getFileNumberById } = useClientStore()
-const { getPackagesByFileNumber } = usePackageStore()
+const { currentFileNumber, loading, error, fetchFileNumberById } = useFileNumbers()
 
 const fileNumber = ref(null)
 
-const demandPackagesCount = computed(() => {
-  if (!fileNumber.value) return 0
-  const packages = getPackagesByFileNumber(route.params.clientId, route.params.fileNumberId)
-  return packages.length
-})
-
-const goToDemandPackages = () => {
-  router.push({
-    name: 'DemandPackages',
-    params: {
-      clientId: route.params.clientId,
-      fileNumberId: route.params.fileNumberId
-    }
-  })
-}
-
-onMounted(() => {
-  fileNumber.value = getFileNumberById(route.params.clientId, route.params.fileNumberId)
+onMounted(async () => {
+  try {
+    const data = await fetchFileNumberById(route.params.fileNumberId)
+    fileNumber.value = data
+  } catch (err) {
+    console.error('Error fetching file number:', err)
+  }
 })
 </script>
 
@@ -130,6 +118,14 @@ onMounted(() => {
   padding: 2rem;
   border-radius: 8px;
   color: #dc3545;
+  text-align: center;
+}
+
+.loading-message {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  color: #666;
   text-align: center;
 }
 

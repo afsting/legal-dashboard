@@ -1,64 +1,172 @@
-# Penny Page Demand Development Application
+# Legal Dashboard
 
-A client-centric web-based application for managing demand packages at a law firm. Organize clients → file numbers (court cases) → demand packages with comprehensive document checklists.
+A client-centric web-based application for managing legal cases, clients, and demand packages at a law firm. Organize clients → file numbers (court cases) → demand packages with comprehensive document management.
+
+## Documentation
+
+📚 **Detailed Documentation:**
+- [Architecture](docs/ARCHITECTURE.md) - Infrastructure, services, and deployment
+- [Data Model](docs/DATA_MODEL.md) - Database schema and relationships
+- [UI Design](docs/UI_DESIGN.md) - Component structure and design system
 
 ## Project Overview
 
-This application manages the complete lifecycle of demand packages for law firm clients, supporting multiple file numbers per client (one per court case) and multiple functions within each case.
+This application manages the complete lifecycle of legal case management for law firms, supporting multiple file numbers per client (one per court case) and multiple functions within each case.
 
-### Current Implementation (Phase 2 - Complete)
-- **Authentication**: Google OAuth 2.0 with JWT decoding
-- **Client Management**: Hierarchical organization (Client → File Numbers → Functions)
-- **Demand Packages**: Create and manage within file number context
-- **Document Checklist**: Categorized documents (Medical Records, Accident Reports, Photographs)
-- **Search & Filter**: Real-time client search with sorting options
-- **Settings**: Email allowlist management
+### Current Implementation
+- **Authentication**: JWT-based authentication with bcrypt password hashing
+- **Client Management**: CRUD operations for clients with user isolation
+- **File Numbers**: Court case tracking associated with clients
+- **Database**: DynamoDB via LocalStack for local development
+- **Storage**: S3 via LocalStack (prepared for document management)
+- **API**: RESTful Express.js backend with JWT middleware
 
-### Planned Features (Phase 3)
-- **Document Management Function**: Upload and organize case documents
-- **Motion Management**: Track and manage motions
-- **Settlement Tracking**: Monitor settlement progress
-- **AWS Integration**: S3 storage, Lambda backend
-- **AI Assistance**: Smart document suggestions and workflow automation
+### Planned Features
+- **Demand Packages**: Create structured demand letter packages
+- **Document Management**: Upload and organize case documents
+- **Workflow Checklists**: Track case progress with custom checklists
+- **Settings**: User preferences and system configuration
+- **AWS Migration**: Deploy to production AWS environment
+- **SDK Migration**: Upgrade from AWS SDK v2 to v3
 
 ## Tech Stack
 
-- **Frontend**: Vue 3 (Composition API with `<script setup>`)
-- **Build Tool**: Vite 7.2.5 (with Rolldown experimental bundler)
-- **Router**: Vue Router (dynamic imports, protected routes)
-- **Authentication**: Google OAuth 2.0 with custom JWT validation
-- **State Management**: Vue composables (composable-based stores)
-- **Styling**: Custom CSS (no external framework)
-- **Deployment**: AWS (future)
+### Frontend
+- **Framework**: Vue 3 (Composition API with `<script setup>`)
+- **Build Tool**: Vite 7.2.5 (with Rolldown bundler)
+- **Router**: Vue Router with authentication guards
+- **State Management**: Pinia stores + Composables pattern
+- **Styling**: Scoped CSS with custom design system
+
+### Backend
+- **Framework**: Node.js with Express.js
+- **Authentication**: JWT tokens (7-day expiry)
+- **Database**: DynamoDB (AWS SDK v2)
+- **Storage**: S3
+- **Infrastructure**: AWS CDK with TypeScript
+
+### Development Environment
+- **Local AWS**: LocalStack in Docker
+- **Database**: DynamoDB tables on LocalStack
+- **Storage**: S3 buckets on LocalStack
 
 ## Getting Started
 
 ### Prerequisites
 - Node.js 16+ installed
+- Docker Desktop (for LocalStack)
 - npm or yarn
-- Google OAuth credentials configured
 
 ### Installation
 
+1. **Clone the repository**
 ```bash
+git clone <repository-url>
+cd legal_dashboard
+```
+
+2. **Install dependencies**
+```bash
+# Frontend
 npm install
+
+# Backend
+cd backend
+npm install
+cd ..
+```
+
+3. **Start LocalStack**
+```bash
+docker-compose up -d
+```
+
+4. **Initialize DynamoDB and S3**
+```bash
+cd backend
+node scripts/init-localstack.js
+cd ..
 ```
 
 ### Environment Setup
 
-Create `.env.local` with:
-```
-VITE_GOOGLE_CLIENT_ID=your_client_id_here
-VITE_ALLOWED_EMAILS=user@example.com
+#### Frontend `.env`
+```env
+VITE_API_URL=http://localhost:5000/api
 ```
 
-### Development
+#### Backend `.env`
+```env
+PORT=5000
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_EXPIRES_IN=7d
+AWS_REGION=us-east-1
+AWS_ENDPOINT=http://localhost:4566
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test
+DYNAMODB_TABLE_USERS=users
+DYNAMODB_TABLE_CLIENTS=clients
+DYNAMODB_TABLE_PACKAGES=packages
+DYNAMODB_TABLE_FILE_NUMBERS=file-numbers
+DYNAMODB_TABLE_WORKFLOWS=workflows
+S3_BUCKET_DOCUMENTS=legal-documents-dev
+```
 
+### Running the Application
+
+1. **Start LocalStack** (if not already running)
+```bash
+docker-compose up -d
+```
+
+2. **Start Backend Server**
+```bash
+cd backend
+node src/server.js
+# Server runs on http://localhost:5000
+```
+
+3. **Start Frontend Dev Server**
 ```bash
 npm run dev
+# App runs on http://localhost:5173
 ```
 
-Available at `http://localhost:5173/`
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login user  
+- `GET /api/auth/me` - Get current user
+
+### Clients
+- `GET /api/clients` - List all clients for user
+- `GET /api/clients/:clientId` - Get client details
+- `POST /api/clients` - Create new client
+- `PUT /api/clients/:clientId` - Update client
+- `DELETE /api/clients/:clientId` - Delete client
+
+### File Numbers
+- `GET /api/file-numbers/client/:clientId` - List file numbers for client
+- `GET /api/file-numbers/:fileId` - Get file number details
+- `POST /api/file-numbers` - Create new file number
+- `PUT /api/file-numbers/:fileId` - Update file number
+- `DELETE /api/file-numbers/:fileId` - Delete file number
+
+## Development
+
+### Testing LocalStack
+```bash
+# List DynamoDB tables
+aws dynamodb list-tables --endpoint-url=http://localhost:4566
+
+# Scan clients table
+aws dynamodb scan --table-name clients --endpoint-url=http://localhost:4566
+```
+
+### Known Issues
+- AWS SDK v2 is deprecated, migration to v3 needed
+- File Numbers table uses Scan instead of GSI for client queries
 
 ### Google OAuth Configuration
 

@@ -1,8 +1,21 @@
 <template>
-  <div class="login-container">
-    <div class="login-box">
-      <h1>Legal Dashboard</h1>
-      <form @submit.prevent="handleLogin">
+  <div class="register-container">
+    <div class="register-box">
+      <h1>Create Account</h1>
+      
+      <div v-if="registrationSuccess" class="success-message">
+        <h2>✓ Account Created!</h2>
+        <p>Your account has been created successfully.</p>
+        <p><strong>Please wait for admin approval before logging in.</strong></p>
+        <p>You will be notified once your account is approved.</p>
+        <router-link to="/login" class="btn-primary">Go to Login</router-link>
+      </div>
+
+      <form v-else @submit.prevent="handleRegister">
+        <div class="form-group">
+          <label>Name</label>
+          <input v-model="name" type="text" required placeholder="Full Name" />
+        </div>
         <div class="form-group">
           <label>Email</label>
           <input v-model="email" type="email" required placeholder="user@example.com" />
@@ -12,12 +25,12 @@
           <input v-model="password" type="password" required placeholder="Password" />
         </div>
         <button type="submit" class="btn-primary" :disabled="loading">
-          {{ loading ? 'Logging in...' : 'Login' }}
+          {{ loading ? 'Creating Account...' : 'Register' }}
         </button>
         <p v-if="error" class="error">{{ error }}</p>
-        <p class="register-link">
-          Don't have an account?
-          <router-link to="/register">Register here</router-link>
+        <p class="login-link">
+          Already have an account?
+          <router-link to="/login">Login here</router-link>
         </p>
       </form>
     </div>
@@ -30,24 +43,27 @@ import { useRouter } from 'vue-router'
 import { useAuth } from '../stores/authStore'
 
 const router = useRouter()
-const { login } = useAuth()
+const { register } = useAuth()
+const name = ref('')
 const email = ref('')
 const password = ref('')
 const loading = ref(false)
 const error = ref('')
+const registrationSuccess = ref(false)
 
-const handleLogin = async () => {
+const handleRegister = async () => {
   error.value = ''
   loading.value = true
   try {
-    const result = await login(email.value, password.value)
+    const result = await register(email.value, password.value, name.value)
     if (result.success) {
-      router.push('/clients')
+      // Show success message instead of redirecting
+      registrationSuccess.value = true
     } else {
-      error.value = result.error || 'Login failed'
+      error.value = result.error || 'Registration failed'
     }
   } catch (err) {
-    error.value = err.message || 'Login failed'
+    error.value = err.message || 'Registration failed'
   } finally {
     loading.value = false
   }
@@ -55,7 +71,7 @@ const handleLogin = async () => {
 </script>
 
 <style scoped>
-.login-container {
+.register-container {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -63,7 +79,7 @@ const handleLogin = async () => {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-.login-box {
+.register-box {
   background: white;
   padding: 40px;
   border-radius: 8px;
@@ -131,19 +147,48 @@ h1 {
   text-align: center;
 }
 
-.register-link {
+.success-message {
+  text-align: center;
+  padding: 20px;
+}
+
+.success-message h2 {
+  color: #28a745;
+  margin-bottom: 15px;
+  font-size: 24px;
+}
+
+.success-message p {
+  color: #333;
+  margin: 10px 0;
+  line-height: 1.6;
+}
+
+.success-message strong {
+  color: #667eea;
+}
+
+.success-message .btn-primary {
+  margin-top: 20px;
+  display: inline-block;
+  text-decoration: none;
+  padding: 12px 30px;
+  width: auto;
+}
+
+.login-link {
   text-align: center;
   margin-top: 20px;
   color: #666;
 }
 
-.register-link a {
+.login-link a {
   color: #667eea;
   text-decoration: none;
   font-weight: 600;
 }
 
-.register-link a:hover {
+.login-link a:hover {
   text-decoration: underline;
 }
 </style>

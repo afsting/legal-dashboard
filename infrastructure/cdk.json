@@ -1,0 +1,19 @@
+{
+  "app": "npx ts-node bin/app.ts",
+  "watch": {
+    "include": [
+      "**"
+    ],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "images/**",
+      ".git",
+      "node_modules"
+    ]
+  },
+  "context": {
+    "environment": "development",
+    "region": "us-east-1"
+  }
+}

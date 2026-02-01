@@ -1,0 +1,24 @@
+{
+  "name": "legal-dashboard-infrastructure",
+  "version": "1.0.0",
+  "description": "AWS CDK Infrastructure for Legal Dashboard",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "cdk": "cdk",
+    "cdk:synth": "cdk synth",
+    "cdk:deploy": "cdk deploy",
+    "cdk:destroy": "cdk destroy",
+    "cdk:diff": "cdk diff",
+    "deploy:localstack": "cdk deploy --endpoint-url http://localhost:4566 --region us-east-1"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.100.0",
+    "constructs": "^10.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.0",
+    "aws-cdk": "^2.100.0",
+    "typescript": "^5.3.2"
+  }
+}

@@ -1,0 +1,11 @@
+# CDK asset staging directory
+.cdk.staging/
+cdk.out/
+
+# dependencies
+node_modules/
+
+# misc
+*.js
+*.d.ts
+!bin/*.js

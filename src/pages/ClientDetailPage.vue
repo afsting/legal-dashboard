@@ -2,11 +2,15 @@
   <div class="client-detail">
     <header class="navbar">
       <h1>Client Detail</h1>
-      <router-link to="/" class="btn-secondary">Back to Clients</router-link>
+      <router-link to="/clients" class="btn-secondary">Back to Clients</router-link>
     </header>
 
     <main class="content">
-      <div v-if="!client" class="error-message">
+      <div v-if="loading" class="loading-message">
+        Loading client details...
+      </div>
+
+      <div v-else-if="error || !client" class="error-message">
         Client not found
       </div>
 
@@ -23,20 +27,36 @@
         <div class="file-numbers-section">
           <h3>File Numbers (Court Cases)</h3>
           
-          <div v-if="client.fileNumbers.length === 0" class="empty-state">
+          <div v-if="!fileNumbers || fileNumbers.length === 0" class="empty-state">
             <p>No file numbers yet. Add a file number to get started.</p>
           </div>
 
-          <div v-else class="file-numbers-grid">
-            <div v-for="fileNumber in client.fileNumbers" :key="fileNumber.id" class="file-number-card" @click="goToFileNumber(fileNumber.id)">
-              <div class="card-header">
-                <h4>{{ fileNumber.number }}</h4>
-                <span class="status-badge" :class="fileNumber.status || 'active'">{{ fileNumber.status || 'Active' }}</span>
+          <div v-else class="file-numbers-list">
+            <div class="list-header">
+              <div class="col-number">File Number</div>
+              <div class="col-description">Description</div>
+              <div class="col-status">Status</div>
+              <div class="col-created">Created Date</div>
+              <div class="col-actions">Actions</div>
+            </div>
+
+            <div v-for="fileNumber in fileNumbers" :key="fileNumber.fileId" class="list-row">
+              <div class="col-number">
+                <strong>{{ fileNumber.fileNumber }}</strong>
               </div>
-              <p class="card-description">{{ fileNumber.description || 'No description' }}</p>
-              <div class="card-meta">
-                <small>Created: {{ formatDate(fileNumber.createdAt) }}</small>
-                <small>Demand Packages: {{ fileNumber.demandPackages.length }}</small>
+              <div class="col-description">
+                {{ fileNumber.description || 'No description' }}
+              </div>
+              <div class="col-status">
+                <span class="status-badge" :class="fileNumber.status || 'active'">
+                  {{ fileNumber.status || 'Active' }}
+                </span>
+              </div>
+              <div class="col-created">
+                {{ formatDate(fileNumber.createdAt) }}
+              </div>
+              <div class="col-actions">
+                <button @click="goToFileNumber(fileNumber.fileId)" class="btn-view">View Details</button>
               </div>
             </div>
           </div>
@@ -93,11 +113,13 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useClientStore } from '../stores/clientStore'
+import { useClients } from '../composables/useClients'
+import { useFileNumbers } from '../composables/useFileNumbers'
 
 const router = useRouter()
 const route = useRoute()
-const { getClientById, addFileNumber } = useClientStore()
+const { currentClient, loading, error, fetchClientById } = useClients()
+const { fileNumbers, createFileNumber, fetchFileNumbersByClient } = useFileNumbers()
 
 const client = ref(null)
 const showAddFileNumber = ref(false)
@@ -122,16 +144,37 @@ const goToFileNumber = (fileNumberId) => {
   })
 }
 
-const handleAddFileNumber = () => {
+const handleAddFileNumber = async () => {
   if (newFileNumber.value.number.trim()) {
-    addFileNumber(route.params.clientId, newFileNumber.value)
-    newFileNumber.value = { number: '', description: '', court: '', status: 'active' }
-    showAddFileNumber.value = false
+    try {
+      await createFileNumber({
+        clientId: route.params.clientId,
+        fileNumber: newFileNumber.value.number,
+        description: newFileNumber.value.description,
+        status: newFileNumber.value.status
+      })
+      
+      // Refresh file numbers list
+      await fetchFileNumbersByClient(route.params.clientId)
+      
+      newFileNumber.value = { number: '', description: '', court: '', status: 'active' }
+      showAddFileNumber.value = false
+    } catch (err) {
+      console.error('Error adding file number:', err)
+    }
   }
 }
 
-onMounted(() => {
-  client.value = getClientById(route.params.clientId)
+onMounted(async () => {
+  try {
+    const data = await fetchClientById(route.params.clientId)
+    client.value = data
+    
+    // Fetch file numbers for this client
+    await fetchFileNumbersByClient(route.params.clientId)
+  } catch (err) {
+    console.error('Error fetching client:', err)
+  }
 })
 </script>
 
@@ -184,6 +227,14 @@ onMounted(() => {
   padding: 2rem;
   border-radius: 8px;
   color: #dc3545;
+  text-align: center;
+}
+
+.loading-message {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  color: #666;
   text-align: center;
 }
 
@@ -243,42 +294,63 @@ onMounted(() => {
   text-align: center;
 }
 
-.file-numbers-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.file-number-card {
-  background: #f9f9f9;
+.file-numbers-list {
+  background: white;
   border-radius: 8px;
-  padding: 1.5rem;
-  border: 2px solid #eee;
-  transition: all 0.2s;
-  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  margin-top: 1rem;
 }
 
-.file-number-card:hover {
-  border-color: #667eea;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+.file-numbers-list .list-header {
+  display: grid;
+  grid-template-columns: 1.5fr 2.5fr 1fr 1.5fr 1.2fr;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: start;
-  margin-bottom: 0.75rem;
+.file-numbers-list .list-row {
+  display: grid;
+  grid-template-columns: 1.5fr 2.5fr 1fr 1.5fr 1.2fr;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #f0f0f0;
+  align-items: center;
+  transition: background 0.2s;
 }
 
-.card-header h4 {
-  margin: 0;
+.file-numbers-list .list-row:hover {
+  background: #f8f9ff;
+}
+
+.file-numbers-list .list-row:last-child {
+  border-bottom: none;
+}
+
+.col-number {
+  font-size: 15px;
+}
+
+.col-number strong {
   color: #333;
-  font-size: 18px;
+}
+
+.col-description {
+  font-size: 13px;
+  color: #666;
+}
+
+.col-status {
+  font-size: 13px;
 }
 
 .status-badge {
-  padding: 0.25rem 0.75rem;
+  display: inline-block;
+  padding: 0.35rem 0.85rem;
   border-radius: 20px;
   font-size: 11px;
   font-weight: 600;
@@ -295,20 +367,32 @@ onMounted(() => {
   color: white;
 }
 
-.card-description {
+.col-created {
   color: #666;
-  margin: 0.5rem 0;
-  font-size: 14px;
+  font-size: 13px;
 }
 
-.card-meta {
+.col-actions {
   display: flex;
-  justify-content: space-between;
-  color: #999;
-  font-size: 12px;
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #ddd;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.btn-view {
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-view:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
 }
 
 .modal-overlay {
