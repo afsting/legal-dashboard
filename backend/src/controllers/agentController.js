@@ -1,138 +1,315 @@
+/**
+ * INTENT: Bedrock Agent Invocation Controller
+ * 
+ * Purpose: Handle legal document analysis queries by invoking AWS Bedrock agents
+ * with knowledge base context. Manages request validation, agent communication,
+ * response streaming, and error handling.
+ * 
+ * Input: HTTP POST request with query text and optional case context
+ * Output: Agent response synthesized from knowledge base documents
+ */
+
 const { BedrockAgentRuntimeClient, InvokeAgentCommand } = require('@aws-sdk/client-bedrock-agent-runtime');
+
+// ============================================================================
+// TYPES & CONSTANTS
+// ============================================================================
+
+/**
+ * @typedef {Object} AgentRequest
+ * @property {string} query - The user's question
+ * @property {string} [clientId] - Optional client identifier for context
+ * @property {string} [fileNumber] - Optional file number for context
+ */
+
+/**
+ * @typedef {Object} AgentResponse
+ * @property {string} answer - The agent's synthesized response
+ * @property {string} query - Echo of the input query
+ * @property {string} [clientId] - Client context if provided
+ * @property {string} [fileNumber] - File number context if provided
+ */
+
 const AGENT_ID = process.env.BEDROCK_AGENT_ID;
 const AGENT_ALIAS_ID = process.env.BEDROCK_AGENT_ALIAS_ID;
+const REGION = 'us-east-1';
 
-// Use AWS SDK v3 Bedrock Agent Runtime
-let bedrockAgentClient;
-try {
-  bedrockAgentClient = new BedrockAgentRuntimeClient({ region: 'us-east-1' });
-} catch (e) {
-  console.warn('BedrockAgentRuntime not available:', e.message);
+// ============================================================================
+// CLIENT INITIALIZATION
+// ============================================================================
+
+let bedrockAgentClient = null;
+
+function initializeClient() {
+  try {
+    if (!bedrockAgentClient) {
+      bedrockAgentClient = new BedrockAgentRuntimeClient({ region: REGION });
+    }
+    return bedrockAgentClient;
+  } catch (error) {
+    console.error('Failed to initialize Bedrock client:', error.message);
+    return null;
+  }
 }
 
-exports.invokeAgent = async (req, res) => {
-  try {
-    const { query, clientId, fileNumber } = req.body;
+// ============================================================================
+// REQUEST VALIDATION
+// ============================================================================
 
-    if (!query || !query.trim()) {
-      return res.status(400).json({ error: 'Query is required' });
-    }
+/**
+ * Validates that the request contains required fields
+ * @param {AgentRequest} body - The request body
+ * @returns {Array} Array of error messages, empty if valid
+ */
+function validateRequest(body) {
+  const errors = [];
 
-    if (!AGENT_ID || !AGENT_ALIAS_ID) {
-      return res.status(500).json({ error: 'Bedrock agent not configured', agentId: AGENT_ID, aliasId: AGENT_ALIAS_ID });
-    }
-
-    console.log('Agent config:', { AGENT_ID, AGENT_ALIAS_ID });
-    console.log('Invoking agent with query:', query);
-
-    // Prepare context if clientId/fileNumber provided
-    const context = clientId || fileNumber
-      ? `Context: Client ID: ${clientId}, File Number: ${fileNumber}`
-      : '';
-    const fullQuery = context ? `${context}\n\nQuery: ${query}` : query;
-
-    const response = await bedrockAgentClient.send(
-      new InvokeAgentCommand({
-        agentId: AGENT_ID,
-        agentAliasId: AGENT_ALIAS_ID,
-        sessionId: `session-${Date.now()}`,
-        inputText: fullQuery,
-      })
-    );
-
-    console.log('Agent response received, type:', typeof response, 'keys:', Object.keys(response || {}));
-
-    // Collect response from the stream
-    let responseText = '';
-    
-    if (response.completion) {
-      console.log('Reading response from completion stream');
-      responseText = await streamToString(response.completion);
-    } else if (response.output) {
-      console.log('Response has output field');
-      responseText = String(response.output);
-    } else {
-      console.log('Fallback: converting entire response to JSON');
-      responseText = JSON.stringify(response, null, 2);
-    }
-
-    console.log('Response text length:', responseText.length, 'first 300 chars:', responseText.substring(0, 300));
-
-    // Parse the response if it's JSON
-    try {
-      const parsed = JSON.parse(responseText);
-      if (parsed.output && typeof parsed.output === 'string') {
-        responseText = parsed.output;
-      } else if (parsed.response) {
-        responseText = parsed.response;
-      } else if (parsed.message) {
-        responseText = parsed.message;
-      } else if (parsed.content) {
-        responseText = parsed.content;
-      } else {
-        responseText = JSON.stringify(parsed, null, 2);
-      }
-    } catch (e) {
-      // Not JSON, use as-is
-      console.log('Response is not JSON:', responseText.substring(0, 200));
-    }
-
-    console.log('Final response text:', responseText.substring(0, 200));
-
-    res.json({
-      answer: responseText,
-      query,
-      clientId,
-      fileNumber,
-    });
-  } catch (err) {
-    console.error('Bedrock agent error:', {
-      message: err.message,
-      code: err.code,
-      statusCode: err.statusCode,
-      stack: err.stack,
-      fullError: err
-    });
-    res.status(500).json({ 
-      error: 'Agent invocation failed', 
-      details: err.message,
-      code: err.code,
-      statusCode: err.statusCode
-    });
+  if (!body.query || !body.query.trim()) {
+    errors.push('Query is required and cannot be empty');
   }
-};
 
-// Helper function to convert stream to string for SDK v3
-const streamToString = async (stream) => {
+  if (!AGENT_ID || !AGENT_ALIAS_ID) {
+    errors.push('Bedrock agent configuration missing (BEDROCK_AGENT_ID or BEDROCK_AGENT_ALIAS_ID)');
+  }
+
+  return errors;
+}
+
+// ============================================================================
+// QUERY BUILDING
+// ============================================================================
+
+/**
+ * Builds the full query with optional case context
+ * Step 1: Extract context parameters
+ * Step 2: Format context string if parameters provided
+ * Step 3: Combine context with user query
+ * 
+ * @param {string} query - User's question
+ * @param {string} [clientId] - Optional client ID
+ * @param {string} [fileNumber] - Optional file number
+ * @returns {string} Complete query with context
+ */
+function buildQueryWithContext(query, clientId, fileNumber) {
+  const hasContext = clientId || fileNumber;
+  if (!hasContext) {
+    return query;
+  }
+
+  const contextParts = [];
+  if (clientId) contextParts.push(`Client ID: ${clientId}`);
+  if (fileNumber) contextParts.push(`File Number: ${fileNumber}`);
+
+  const context = `Context: ${contextParts.join(', ')}`;
+  return `${context}\n\nQuery: ${query}`;
+}
+
+// ============================================================================
+// STREAM PARSING
+// ============================================================================
+
+/**
+ * Converts AWS SDK v3 async iterable stream to text
+ * Handles multiple event types emitted by Bedrock Agent Runtime
+ * 
+ * Step 1: Validate stream exists
+ * Step 2: Check if stream is async iterable
+ * Step 3: Consume events and extract text chunks
+ * Step 4: Aggregate chunks into complete response
+ * 
+ * @param {AsyncIterable} stream - The response stream from agent
+ * @returns {Promise<string>} Complete response text
+ */
+async function consumeStream(stream) {
+  if (!stream) {
+    return '';
+  }
+
+  // Check if stream is async iterable
+  if (!stream[Symbol.asyncIterator]) {
+    console.warn('Stream is not async iterable');
+    return '';
+  }
+
   const chunks = [];
   
-  if (!stream) return '';
-  
-  // SDK v3 streams are async iterables
-  if (stream[Symbol.asyncIterator]) {
-    console.log('Stream is async iterable, consuming events');
-    let eventCount = 0;
-    
+  try {
     for await (const event of stream) {
-      eventCount++;
-      console.log(`[Event ${eventCount}] received:`, Object.keys(event || {}));
-      
-      // Handle various event types
-      if (event.chunk && event.chunk.bytes) {
-        const text = Buffer.from(event.chunk.bytes).toString('utf-8');
-        console.log(`[Event ${eventCount}] extracted text (${text.length} chars):`, text.substring(0, 100));
-        chunks.push(text);
-      } else if (event.contentBlockDelta && event.contentBlockDelta.delta && event.contentBlockDelta.delta.text) {
-        const text = event.contentBlockDelta.delta.text;
-        console.log(`[Event ${eventCount}] extracted from delta:`, text.substring(0, 100));
+      // Extract text from various event shapes
+      const text = extractTextFromEvent(event);
+      if (text) {
         chunks.push(text);
       }
     }
-    
-    console.log(`Stream complete. Total events: ${eventCount}, total chunks: ${chunks.length}`);
-  } else {
-    console.log('Stream is not async iterable, attempting direct access');
+  } catch (error) {
+    console.error('Error consuming stream:', error.message);
   }
-  
+
   return chunks.join('');
+}
+
+/**
+ * Extracts text content from a single stream event
+ * Handles: chunk.bytes (SDK format), contentBlockDelta.delta.text (Claude format)
+ * 
+ * @param {Object} event - Single event from stream
+ * @returns {string|null} Extracted text or null
+ */
+function extractTextFromEvent(event) {
+  if (!event) {
+    return null;
+  }
+
+  // Handle Bedrock chunk format with bytes
+  if (event.chunk?.bytes) {
+    try {
+      return Buffer.from(event.chunk.bytes).toString('utf-8');
+    } catch (error) {
+      console.error('Failed to decode chunk bytes:', error.message);
+      return null;
+    }
+  }
+
+  // Handle Claude content block delta format
+  if (event.contentBlockDelta?.delta?.text) {
+    return event.contentBlockDelta.delta.text;
+  }
+
+  return null;
+}
+
+// ============================================================================
+// RESPONSE PARSING
+// ============================================================================
+
+/**
+ * Parses agent response, extracting text from various JSON structures
+ * Handles cases where response is already text or wrapped in JSON
+ * 
+ * Step 1: Attempt JSON parse
+ * Step 2: Search for text in known fields (output, response, message, content)
+ * Step 3: Return text or fallback to stringified response
+ * 
+ * @param {string} responseText - Raw response from agent
+ * @returns {string} Clean response text
+ */
+function parseResponse(responseText) {
+  if (!responseText) {
+    return '';
+  }
+
+  // Try to parse as JSON
+  try {
+    const parsed = JSON.parse(responseText);
+
+    // Check common response field names
+    if (typeof parsed.output === 'string') {
+      return parsed.output;
+    }
+    if (parsed.response && typeof parsed.response === 'string') {
+      return parsed.response;
+    }
+    if (parsed.message && typeof parsed.message === 'string') {
+      return parsed.message;
+    }
+    if (parsed.content && typeof parsed.content === 'string') {
+      return parsed.content;
+    }
+
+    // If no recognized field, return formatted JSON
+    return JSON.stringify(parsed, null, 2);
+  } catch (error) {
+    // Not JSON, return as-is
+    return responseText;
+  }
+}
+
+// ============================================================================
+// BEDROCK INVOCATION
+// ============================================================================
+
+/**
+ * Invokes the Bedrock agent and retrieves the response
+ * 
+ * Step 1: Ensure client is initialized
+ * Step 2: Build invoke command with query and context
+ * Step 3: Send command to Bedrock
+ * Step 4: Consume response stream
+ * Step 5: Parse and return response
+ * 
+ * @param {string} fullQuery - Complete query with context
+ * @returns {Promise<string>} Agent's response text
+ * @throws {Error} If invocation fails
+ */
+async function invokeBedrockAgent(fullQuery) {
+  const client = initializeClient();
+  if (!client) {
+    throw new Error('Bedrock client unavailable');
+  }
+
+  const command = new InvokeAgentCommand({
+    agentId: AGENT_ID,
+    agentAliasId: AGENT_ALIAS_ID,
+    sessionId: `session-${Date.now()}`,
+    inputText: fullQuery,
+  });
+
+  const response = await client.send(command);
+
+  // Response should have a completion stream
+  if (!response.completion) {
+    throw new Error('No completion stream in agent response');
+  }
+
+  const streamText = await consumeStream(response.completion);
+  return parseResponse(streamText);
+}
+
+// ============================================================================
+// MAIN HANDLER
+// ============================================================================
+
+/**
+ * HTTP handler for agent query endpoint
+ * 
+ * Step 1: Validate request format
+ * Step 2: Build query with optional context
+ * Step 3: Invoke Bedrock agent
+ * Step 4: Return synthesized response
+ * 
+ * @param {Object} req - Express request
+ * @param {Object} res - Express response
+ */
+exports.invokeAgent = async (req, res) => {
+  try {
+    // Step 1: Validate
+    const errors = validateRequest(req.body);
+    if (errors.length > 0) {
+      return res.status(400).json({ error: errors.join('; ') });
+    }
+
+    const { query, clientId, fileNumber } = req.body;
+
+    // Step 2: Build query
+    const fullQuery = buildQueryWithContext(query, clientId, fileNumber);
+
+    // Step 3: Invoke agent
+    const answer = await invokeBedrockAgent(fullQuery);
+
+    // Step 4: Return response
+    const response = {
+      answer,
+      query,
+      ...(clientId && { clientId }),
+      ...(fileNumber && { fileNumber }),
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('Agent invocation error:', error.message);
+    res.status(500).json({
+      error: 'Failed to process query',
+      details: error.message,
+    });
+  }
 };
