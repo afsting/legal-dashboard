@@ -2,7 +2,13 @@
   <div class="package-detail">
     <header class="navbar">
       <h1>Package Details</h1>
-      <router-link v-if="currentPackage" :to="`/client/${currentPackage.clientId}/file/${currentPackage.fileNumberId}/packages`" class="btn-secondary">Back to Packages</router-link>
+      <router-link
+        v-if="currentPackage"
+        :to="{ name: 'DemandPackages', params: { clientId: currentPackage.clientId, fileNumberId: currentPackage.fileNumberId } }"
+        class="btn-secondary"
+      >
+        Back to Packages
+      </router-link>
     </header>
 
     <main class="content">
@@ -21,24 +27,24 @@
         <div class="info-grid">
           <div class="info-block">
             <h3>Client Information</h3>
-            <p><strong>Client:</strong> {{ currentPackage.client }}</p>
-            <p><strong>Case Number:</strong> {{ currentPackage.caseNumber || 'N/A' }}</p>
-            <p><strong>Recipient:</strong> {{ currentPackage.recipient }}</p>
+            <p><strong>Client:</strong> {{ clientName }}</p>
+            <p><strong>File Number:</strong> {{ currentPackage.fileNumberId || 'N/A' }}</p>
+            <p><strong>Recipient:</strong> {{ currentPackage.recipient || 'N/A' }}</p>
           </div>
 
           <div class="info-block">
             <h3>Package Details</h3>
             <p><strong>Description:</strong> {{ currentPackage.description || 'No description' }}</p>
             <p><strong>Created:</strong> {{ formatDate(currentPackage.createdAt) }}</p>
-            <p><strong>Medical Records:</strong> {{ currentPackage.documents.medicalRecords.length }}</p>
-            <p><strong>Accident Reports:</strong> {{ currentPackage.documents.accidentReports.length }}</p>
-            <p><strong>Photographs:</strong> {{ currentPackage.documents.photographs.length }}</p>
+            <p><strong>Medical Records:</strong> {{ packageDocuments.medicalRecords.length }}</p>
+            <p><strong>Accident Reports:</strong> {{ packageDocuments.accidentReports.length }}</p>
+            <p><strong>Photographs:</strong> {{ packageDocuments.photographs.length }}</p>
           </div>
         </div>
 
         <div class="actions">
-          <router-link 
-            :to="`/package/${currentPackage.id}/workflow`" 
+          <router-link
+            :to="{ name: 'Checklist', params: { packageId: currentPackage.packageId } }"
             class="btn-primary"
           >
             Manage Checklist
@@ -51,11 +57,11 @@
           
           <div class="document-category">
             <h4>Medical Records (Required)</h4>
-            <div v-if="currentPackage.documents.medicalRecords.length === 0" class="empty-items">
+            <div v-if="packageDocuments.medicalRecords.length === 0" class="empty-items">
               <p>No medical records added yet</p>
             </div>
             <div v-else class="items-list">
-              <div v-for="(item, index) in currentPackage.documents.medicalRecords" :key="index" class="item-card">
+              <div v-for="(item, index) in packageDocuments.medicalRecords" :key="index" class="item-card">
                 {{ item }}
               </div>
             </div>
@@ -63,11 +69,11 @@
 
           <div class="document-category">
             <h4>Accident Reports (Optional)</h4>
-            <div v-if="currentPackage.documents.accidentReports.length === 0" class="empty-items">
+            <div v-if="packageDocuments.accidentReports.length === 0" class="empty-items">
               <p>No accident reports added</p>
             </div>
             <div v-else class="items-list">
-              <div v-for="(item, index) in currentPackage.documents.accidentReports" :key="index" class="item-card">
+              <div v-for="(item, index) in packageDocuments.accidentReports" :key="index" class="item-card">
                 {{ item }}
               </div>
             </div>
@@ -75,11 +81,11 @@
 
           <div class="document-category">
             <h4>Photographs (Optional)</h4>
-            <div v-if="currentPackage.documents.photographs.length === 0" class="empty-items">
+            <div v-if="packageDocuments.photographs.length === 0" class="empty-items">
               <p>No photographs added</p>
             </div>
             <div v-else class="items-list">
-              <div v-for="(item, index) in currentPackage.documents.photographs" :key="index" class="item-card">
+              <div v-for="(item, index) in packageDocuments.photographs" :key="index" class="item-card">
                 {{ item }}
               </div>
             </div>
@@ -91,30 +97,57 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { usePackageStore } from '../stores/packageStore'
+import { usePackages } from '../composables/usePackages'
+import { useClients } from '../composables/useClients'
+import { useFileNumbers } from '../composables/useFileNumbers'
 
 const router = useRouter()
 const route = useRoute()
-const { getPackageById, deletePackage } = usePackageStore()
+const { currentPackage, loading, error, fetchPackageById, deletePackage } = usePackages()
+const { currentClient, fetchClientById } = useClients()
 
-const currentPackage = ref(null)
+const clientName = ref('Loading...')
+const fileNumberName = ref('')
+
+const packageDocuments = computed(() => {
+  if (!currentPackage.value?.documents) {
+    return {
+      medicalRecords: [],
+      accidentReports: [],
+      photographs: []
+    }
+  }
+  return currentPackage.value.documents
+})
 
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString()
 }
 
-const handleDelete = () => {
+const handleDelete = async () => {
   if (confirm('Are you sure you want to delete this package?')) {
-    const pkg = currentPackage.value
-    deletePackage(route.params.id)
-    router.push(`/client/${pkg.clientId}/file/${pkg.fileNumberId}/packages`)
+    try {
+      const pkg = currentPackage.value
+      await deletePackage(route.params.packageId)
+      router.push({ name: 'DemandPackages', params: { clientId: pkg.clientId, fileNumberId: pkg.fileNumberId } })
+    } catch (err) {
+      console.error('Error deleting package:', err)
+    }
   }
 }
 
-onMounted(() => {
-  currentPackage.value = getPackageById(route.params.id)
+onMounted(async () => {
+  try {
+    await fetchPackageById(route.params.packageId)
+    if (currentPackage.value?.clientId) {
+      const client = await fetchClientById(currentPackage.value.clientId)
+      clientName.value = client?.name || 'Unknown'
+    }
+  } catch (err) {
+    console.error('Error loading package:', err)
+  }
 })
 </script>
 

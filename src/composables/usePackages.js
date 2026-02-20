@@ -22,6 +22,21 @@ export function usePackages() {
     }
   };
 
+  const fetchPackagesByFileNumber = async (fileNumberId) => {
+    loading.value = true;
+    error.value = null;
+    try {
+      const data = await api.get(`/packages/file-number/${fileNumberId}`);
+      packages.value = data;
+      return data;
+    } catch (err) {
+      error.value = err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
   const fetchPackageById = async (packageId) => {
     loading.value = true;
     error.value = null;
@@ -96,6 +111,7 @@ export function usePackages() {
     loading,
     error,
     fetchPackagesByClient,
+    fetchPackagesByFileNumber,
     fetchPackageById,
     createPackage,
     updatePackage,

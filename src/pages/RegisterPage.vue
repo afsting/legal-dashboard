@@ -8,7 +8,7 @@
         <p>Your account has been created successfully.</p>
         <p><strong>Please wait for admin approval before logging in.</strong></p>
         <p>You will be notified once your account is approved.</p>
-        <router-link to="/login" class="btn-primary">Go to Login</router-link>
+        <router-link :to="{ name: 'Login' }" class="btn-primary">Go to Login</router-link>
       </div>
 
       <form v-else @submit.prevent="handleRegister">
@@ -30,7 +30,7 @@
         <p v-if="error" class="error">{{ error }}</p>
         <p class="login-link">
           Already have an account?
-          <router-link to="/login">Login here</router-link>
+          <router-link :to="{ name: 'Login' }">Login here</router-link>
         </p>
       </form>
     </div>

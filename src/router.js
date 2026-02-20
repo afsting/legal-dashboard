@@ -8,6 +8,11 @@ const routes = [
     component: () => import('./pages/LoginPage.vue')
   },
   {
+    path: '/auth/callback',
+    name: 'AuthCallback',
+    component: () => import('./pages/AuthCallbackPage.vue')
+  },
+  {
     path: '/register',
     name: 'Register',
     component: () => import('./pages/RegisterPage.vue')
@@ -41,21 +46,21 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/clients/:clientId/file-numbers/:fileNumberId/packages',
+    name: 'DemandPackages',
+    component: () => import('./pages/DemandPackagesPage.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/clients/:clientId/file-numbers/:fileNumberId/packages/create',
+    name: 'PackageCreate',
+    component: () => import('./pages/PackageCreatePage.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/packages/:packageId',
     name: 'PackageDetail',
     component: () => import('./pages/PackageDetailPage.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/dashboard',
-    name: 'Dashboard',
-    component: () => import('./pages/DashboardPage.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/workflows',
-    name: 'Workflows',
-    component: () => import('./pages/WorkflowPage.vue'),
     meta: { requiresAuth: true }
   },
   {
@@ -71,7 +76,7 @@ const routes = [
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
-    path: '/package/:id/workflow',
+    path: '/packages/:packageId/workflow',
     name: 'Checklist',
     component: () => import('./pages/WorkflowPage.vue'),
     meta: { requiresAuth: true }
@@ -84,16 +89,25 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  const { isAuthenticated, initializeAuth } = useAuth()
+  const { isAuthenticated, currentUser, initializeAuth } = useAuth()
   initializeAuth()
 
   if (to.meta.requiresAuth && !isAuthenticated.value) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
-  } else if ((to.name === 'Login' || to.name === 'Register') && isAuthenticated.value) {
-    next({ name: 'Dashboard' })
-  } else {
-    next()
+    return
   }
+
+  if (to.meta.requiresAdmin && !currentUser.value?.isAdmin && !currentUser.value?.groups?.includes('admin')) {
+    next({ name: 'Dashboard' })
+    return
+  }
+
+  if ((to.name === 'Login' || to.name === 'Register') && isAuthenticated.value) {
+    next({ name: 'Dashboard' })
+    return
+  }
+
+  next()
 })
 
 export default router

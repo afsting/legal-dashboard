@@ -2,7 +2,7 @@
   <div class="demand-packages">
     <header class="navbar">
       <h1>Demand Packages</h1>
-      <router-link :to="`/client/${$route.params.clientId}/file/${$route.params.fileNumberId}`" class="btn-secondary">Back to File Number</router-link>
+      <router-link :to="{ name: 'FileNumberDetail', params: { clientId: $route.params.clientId, fileNumberId: $route.params.fileNumberId } }" class="btn-secondary">Back to File Number</router-link>
     </header>
 
     <main class="content">
@@ -16,7 +16,7 @@
       </div>
 
       <div v-else class="packages-grid">
-        <div v-for="pkg in packages" :key="pkg.id" class="package-card">
+        <div v-for="pkg in packages" :key="pkg.packageId" class="package-card">
           <div class="card-header">
             <h3>{{ pkg.name }}</h3>
             <span class="status-badge" :class="pkg.status">{{ pkg.status }}</span>
@@ -26,8 +26,8 @@
             <small>Created: {{ formatDate(pkg.createdAt) }}</small>
           </div>
           <div class="card-actions">
-            <router-link :to="`/package/${pkg.id}`" class="btn-link">View Details</router-link>
-            <router-link :to="`/package/${pkg.id}/workflow`" class="btn-link">Document Checklist</router-link>
+            <router-link :to="{ name: 'PackageDetail', params: { packageId: pkg.packageId } }" class="btn-link">View Details</router-link>
+            <router-link :to="{ name: 'Checklist', params: { packageId: pkg.packageId } }" class="btn-link">Document Checklist</router-link>
           </div>
         </div>
       </div>
@@ -81,15 +81,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useClientStore } from '../stores/clientStore'
-import { usePackageStore } from '../stores/packageStore'
+import { useFileNumbers } from '../composables/useFileNumbers'
+import { usePackages } from '../composables/usePackages'
 
 const router = useRouter()
 const route = useRoute()
-const { getFileNumberById } = useClientStore()
-const { getPackagesByFileNumber, addPackage } = usePackageStore()
+const { currentFileNumber, fetchFileNumberById } = useFileNumbers()
+const { packages, loading, error, fetchPackagesByFileNumber, createPackage } = usePackages()
 
 const fileNumber = ref(null)
 const showCreatePackage = ref(false)
@@ -99,24 +99,38 @@ const newPackage = ref({
   recipient: ''
 })
 
-const packages = computed(() => {
-  return getPackagesByFileNumber(route.params.clientId, route.params.fileNumberId)
-})
-
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString()
 }
 
-const handleCreatePackage = () => {
-  if (newPackage.value.name.trim() && newPackage.value.recipient.trim()) {
-    addPackage(route.params.clientId, route.params.fileNumberId, newPackage.value)
-    newPackage.value = { name: '', description: '', recipient: '' }
-    showCreatePackage.value = false
+const handleCreatePackage = async () => {
+  if (newPackage.value.name.trim()) {
+    try {
+      await createPackage({
+        clientId: route.params.clientId,
+        fileNumberId: route.params.fileNumberId,
+        name: newPackage.value.name,
+        description: newPackage.value.description,
+        recipient: newPackage.value.recipient,
+        status: 'draft'
+      })
+      newPackage.value = { name: '', description: '', recipient: '' }
+      showCreatePackage.value = false
+      await fetchPackagesByFileNumber(route.params.fileNumberId)
+    } catch (err) {
+      console.error('Error creating package:', err)
+    }
   }
 }
 
-onMounted(() => {
-  fileNumber.value = getFileNumberById(route.params.clientId, route.params.fileNumberId)
+onMounted(async () => {
+  try {
+    const data = await fetchFileNumberById(route.params.fileNumberId)
+    fileNumber.value = data
+    await fetchPackagesByFileNumber(route.params.fileNumberId)
+  } catch (err) {
+    console.error('Error loading data:', err)
+  }
 })
 </script>
 

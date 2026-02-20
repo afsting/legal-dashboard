@@ -5,8 +5,8 @@ const app = new cdk.App();
 
 new LegalDashboardStack(app, 'LegalDashboardStack', {
   env: {
-    region: process.env.AWS_REGION || 'us-east-1',
-    account: process.env.AWS_ACCOUNT || '123456789012',
+    region: process.env.CDK_DEFAULT_REGION || process.env.AWS_REGION || 'us-east-1',
+    account: process.env.CDK_DEFAULT_ACCOUNT || process.env.AWS_ACCOUNT,
   },
   description: 'Legal Dashboard Infrastructure',
 });

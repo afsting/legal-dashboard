@@ -43,8 +43,7 @@ const clientController = {
 
   async getAll(req, res) {
     try {
-      const userId = req.user.userId;
-      const clients = await Client.getByUserId(userId);
+      const clients = await Client.getAll();
 
       res.json(clients);
     } catch (error) {

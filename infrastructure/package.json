@@ -10,9 +10,14 @@
     "cdk:deploy": "cdk deploy",
     "cdk:destroy": "cdk destroy",
     "cdk:diff": "cdk diff",
-    "deploy:localstack": "cdk deploy --endpoint-url http://localhost:4566 --region us-east-1"
+    "deploy": "powershell -ExecutionPolicy Bypass -File scripts\\deploy-with-oauth.ps1",
+    "deploy:staging": "powershell -ExecutionPolicy Bypass -File scripts\\deploy-staging.ps1",
+    "destroy:staging": "powershell -ExecutionPolicy Bypass -File scripts\\destroy-staging.ps1",
+    "deploy:localstack": "cdk deploy --endpoint-url http://localhost:4566 --region us-east-1 -c useLocalstack=true",
+    "rotate:jwt": "powershell -ExecutionPolicy Bypass -File scripts\\rotate-jwt-secret.ps1"
   },
   "dependencies": {
+    "amazon-cognito-identity-js": "^6.3.16",
     "aws-cdk-lib": "^2.100.0",
     "constructs": "^10.3.0"
   },

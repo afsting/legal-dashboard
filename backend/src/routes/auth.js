@@ -1,225 +1,135 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const { v4: uuidv4 } = require('uuid');
-const { generateToken, adminMiddleware } = require('../middleware/auth');
-const { dynamodb } = require('../config/aws');
+const { adminMiddleware } = require('../middleware/auth');
+const AWS = require('aws-sdk');
+const cognito = new AWS.CognitoIdentityServiceProvider();
 
 const router = express.Router();
-const USERS_TABLE = process.env.DYNAMODB_TABLE_USERS || 'users';
+const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || 'us-east-1_hPpfv1YSS';
 
-// Register
-router.post('/register', async (req, res) => {
-  try {
-    const { email, password, name } = req.body;
+const getUserAttributes = (user) => {
+  const attributes = {};
+  user.Attributes?.forEach(attr => {
+    attributes[attr.Name] = attr.Value;
+  });
+  return attributes;
+};
 
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: 'Email, password, and name are required' });
-    }
+const getUserGroups = async (username) => {
+  const result = await cognito.adminListGroupsForUser({
+    UserPoolId: USER_POOL_ID,
+    Username: username,
+  }).promise();
 
-    // Check if user exists
-    const existingUser = await dynamodb.get({
-      TableName: USERS_TABLE,
-      Key: { email }
-    }).promise();
+  return result.Groups?.map(group => group.GroupName) || [];
+};
 
-    if (existingUser.Item) {
-      return res.status(409).json({ error: 'User already exists' });
-    }
+// Note: User registration and login now happens through Cognito hosted UI
+// These endpoints manage users in Cognito after authentication
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const userId = uuidv4();
-
-    // Create user
-    await dynamodb.put({
-      TableName: USERS_TABLE,
-      Item: {
-        email,
-        userId,
-        name,
-        password: hashedPassword,
-        approved: false,
-        approvedBy: null,
-        approvedAt: null,
-        role: 'user',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
-    }).promise();
-
-    // Don't issue token for unapproved users
-    res.status(201).json({ 
-      message: 'Account created. Pending admin approval.',
-      user: { userId, email, name, approved: false } 
-    });
-  } catch (error) {
-    console.error('Register error:', error);
-    res.status(500).json({ error: 'Registration failed' });
-  }
-});
-
-// Login
-router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    // Get user
-    const result = await dynamodb.get({
-      TableName: USERS_TABLE,
-      Key: { email }
-    }).promise();
-
-    if (!result.Item) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, result.Item.password);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    // Check if account is approved
-    if (!result.Item.approved) {
-      return res.status(403).json({ error: 'Account pending approval. Please contact an administrator.' });
-    }
-
-    const token = generateToken(result.Item.userId, { 
-      email, 
-      name: result.Item.name, 
-      role: result.Item.role 
-    });
-    res.json({ 
-      token, 
-      user: { 
-        userId: result.Item.userId, 
-        email, 
-        name: result.Item.name,
-        role: result.Item.role 
-      } 
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
-  }
-});
-
-// Admin: Get all pending users
-router.get('/admin/pending-users', adminMiddleware, async (req, res) => {
-  try {
-    const result = await dynamodb.scan({
-      TableName: USERS_TABLE,
-      FilterExpression: 'approved = :approved',
-      ExpressionAttributeValues: {
-        ':approved': false
-      }
-    }).promise();
-
-    const users = result.Items.map(user => ({
-      userId: user.userId,
-      email: user.email,
-      name: user.name,
-      createdAt: user.createdAt
-    }));
-
-    res.json(users);
-  } catch (error) {
-    console.error('Get pending users error:', error);
-    res.status(500).json({ error: 'Failed to fetch pending users' });
-  }
-});
-
-// Admin: Get all users
+// Admin: Get all users from Cognito
 router.get('/admin/users', adminMiddleware, async (req, res) => {
   try {
-    const result = await dynamodb.scan({
-      TableName: USERS_TABLE
-    }).promise();
+    const params = {
+      UserPoolId: USER_POOL_ID,
+      Limit: 60 // Max results per request
+    };
 
-    const users = result.Items.map(user => ({
-      userId: user.userId,
-      email: user.email,
-      name: user.name,
-      approved: user.approved,
-      role: user.role,
-      createdAt: user.createdAt,
-      approvedAt: user.approvedAt
-    }));
+    let allUsers = [];
+    let paginationToken;
 
-    res.json(users);
+    // Paginate through all users
+    do {
+      if (paginationToken) {
+        params.PaginationToken = paginationToken;
+      }
+
+      const result = await cognito.listUsers(params).promise();
+
+      const users = await Promise.all(result.Users.map(async (user) => {
+        const attributes = getUserAttributes(user);
+        const groups = await getUserGroups(user.Username);
+
+        return {
+          userId: user.Username,
+          sub: attributes.sub,
+          email: attributes.email,
+          name: attributes.name || attributes.preferred_username,
+          picture: attributes.picture,
+          createdAt: user.UserCreateDate?.toISOString(),
+          lastModified: user.UserLastModifiedDate?.toISOString(),
+          enabled: user.Enabled,
+          status: user.UserStatus,
+          groups,
+          isAdmin: groups.includes('admin'),
+        };
+      }));
+
+      allUsers = allUsers.concat(users);
+      paginationToken = result.PaginationToken;
+    } while (paginationToken);
+
+    res.json(allUsers);
   } catch (error) {
     console.error('Get users error:', error);
     res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
 
-// Admin: Approve user
-router.post('/admin/approve/:userId', adminMiddleware, async (req, res) => {
+// Admin: Get pending users (users who have not been assigned to any group yet)
+router.get('/admin/pending-users', adminMiddleware, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const params = {
+      UserPoolId: USER_POOL_ID,
+      Limit: 60
+    };
 
-    // Find user by userId (need to scan since userId is not the key)
-    const scanResult = await dynamodb.scan({
-      TableName: USERS_TABLE,
-      FilterExpression: 'userId = :userId',
-      ExpressionAttributeValues: {
-        ':userId': userId
+    let pendingUsers = [];
+    let paginationToken;
+
+    do {
+      if (paginationToken) {
+        params.PaginationToken = paginationToken;
       }
-    }).promise();
 
-    if (!scanResult.Items || scanResult.Items.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+      const result = await cognito.listUsers(params).promise();
 
-    const user = scanResult.Items[0];
+      const pending = (await Promise.all(result.Users.map(async (user) => {
+        const attributes = getUserAttributes(user);
+        const groups = await getUserGroups(user.Username);
 
-    // Update user
-    await dynamodb.put({
-      TableName: USERS_TABLE,
-      Item: {
-        ...user,
-        approved: true,
-        approvedBy: req.user.userId,
-        approvedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
-    }).promise();
+        return {
+          userId: user.Username,
+          sub: attributes.sub,
+          email: attributes.email,
+          name: attributes.name || attributes.preferred_username,
+          picture: attributes.picture,
+          createdAt: user.UserCreateDate?.toISOString(),
+          enabled: user.Enabled,
+          status: user.UserStatus,
+          groups,
+        };
+      }))).filter(user => !user.groups || user.groups.length === 0);
 
-    res.json({ message: 'User approved successfully' });
+      pendingUsers = pendingUsers.concat(pending);
+      paginationToken = result.PaginationToken;
+    } while (paginationToken);
+
+    res.json(pendingUsers);
   } catch (error) {
-    console.error('Approve user error:', error);
-    res.status(500).json({ error: 'Failed to approve user' });
+    console.error('Get pending users error:', error);
+    res.status(500).json({ error: 'Failed to fetch pending users' });
   }
 });
 
-// Admin: Reject/Delete user
+// Admin: Delete user from Cognito
 router.delete('/admin/users/:userId', adminMiddleware, async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Find user by userId
-    const scanResult = await dynamodb.scan({
-      TableName: USERS_TABLE,
-      FilterExpression: 'userId = :userId',
-      ExpressionAttributeValues: {
-        ':userId': userId
-      }
-    }).promise();
-
-    if (!scanResult.Items || scanResult.Items.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const user = scanResult.Items[0];
-
     // Delete user
-    await dynamodb.delete({
-      TableName: USERS_TABLE,
-      Key: { email: user.email }
+    await cognito.adminDeleteUser({
+      UserPoolId: USER_POOL_ID,
+      Username: userId
     }).promise();
 
     res.json({ message: 'User deleted successfully' });
@@ -229,45 +139,57 @@ router.delete('/admin/users/:userId', adminMiddleware, async (req, res) => {
   }
 });
 
-// Admin: Update user role
-router.put('/admin/users/:userId/role', adminMiddleware, async (req, res) => {
+// Admin: Assign user to Cognito group
+router.post('/admin/users/:userId/groups/:groupName', adminMiddleware, async (req, res) => {
   try {
-    const { userId } = req.params;
-    const { role } = req.body;
+    const { userId, groupName } = req.params;
 
-    if (!['user', 'admin'].includes(role)) {
-      return res.status(400).json({ error: 'Invalid role. Must be "user" or "admin"' });
+    if (!['admin', 'user'].includes(groupName)) {
+      return res.status(400).json({ error: 'Invalid group. Must be "admin" or "user"' });
     }
 
-    // Find user by userId
-    const scanResult = await dynamodb.scan({
-      TableName: USERS_TABLE,
-      FilterExpression: 'userId = :userId',
-      ExpressionAttributeValues: {
-        ':userId': userId
-      }
+    // Add user to group
+    await cognito.adminAddUserToGroup({
+      UserPoolId: USER_POOL_ID,
+      Username: userId,
+      GroupName: groupName
     }).promise();
 
-    if (!scanResult.Items || scanResult.Items.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const user = scanResult.Items[0];
-
-    // Update user
-    await dynamodb.put({
-      TableName: USERS_TABLE,
-      Item: {
-        ...user,
-        role,
-        updatedAt: new Date().toISOString()
-      }
-    }).promise();
-
-    res.json({ message: 'User role updated successfully' });
+    res.json({ message: `User added to ${groupName} group successfully` });
   } catch (error) {
-    console.error('Update user role error:', error);
-    res.status(500).json({ error: 'Failed to update user role' });
+    console.error('Add user to group error:', error);
+    if (error.code === 'UserNotFoundException') {
+      res.status(404).json({ error: 'User not found in Cognito' });
+    } else {
+      res.status(500).json({ error: 'Failed to add user to group' });
+    }
+  }
+});
+
+// Admin: Remove user from Cognito group
+router.delete('/admin/users/:userId/groups/:groupName', adminMiddleware, async (req, res) => {
+  try {
+    const { userId, groupName } = req.params;
+
+    if (!['admin', 'user'].includes(groupName)) {
+      return res.status(400).json({ error: 'Invalid group. Must be "admin" or "user"' });
+    }
+
+    // Remove user from group
+    await cognito.adminRemoveUserFromGroup({
+      UserPoolId: USER_POOL_ID,
+      Username: userId,
+      GroupName: groupName
+    }).promise();
+
+    res.json({ message: `User removed from ${groupName} group successfully` });
+  } catch (error) {
+    console.error('Remove user from group error:', error);
+    if (error.code === 'UserNotFoundException') {
+      res.status(404).json({ error: 'User not found in Cognito' });
+    } else {
+      res.status(500).json({ error: 'Failed to remove user from group' });
+    }
   }
 });
 

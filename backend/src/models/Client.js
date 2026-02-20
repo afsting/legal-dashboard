@@ -4,11 +4,11 @@ const { dynamodb } = require('../config/aws');
 const CLIENTS_TABLE = process.env.DYNAMODB_TABLE_CLIENTS || 'clients';
 
 class Client {
-  static async create(userId, clientData) {
+  static async create(createdBy, clientData) {
     const clientId = uuidv4();
     const item = {
       clientId,
-      userId,
+      createdBy,
       name: clientData.name,
       email: clientData.email,
       phone: clientData.phone || null,
@@ -35,14 +35,9 @@ class Client {
     return result.Item || null;
   }
 
-  static async getByUserId(userId) {
-    const result = await dynamodb.query({
+  static async getAll() {
+    const result = await dynamodb.scan({
       TableName: CLIENTS_TABLE,
-      IndexName: 'userIdIndex',
-      KeyConditionExpression: 'userId = :userId',
-      ExpressionAttributeValues: {
-        ':userId': userId,
-      },
     }).promise();
 
     return result.Items || [];

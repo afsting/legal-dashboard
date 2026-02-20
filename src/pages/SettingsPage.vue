@@ -2,7 +2,7 @@
   <div class="settings-page">
     <header class="navbar">
       <h1>Settings</h1>
-      <router-link to="/" class="btn-secondary">Back to Dashboard</router-link>
+      <router-link :to="{ name: 'Dashboard' }" class="btn-secondary">Back to Dashboard</router-link>
     </header>
 
     <main class="content">

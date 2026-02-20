@@ -2,7 +2,7 @@
   <div class="workflow-page">
     <header class="navbar">
       <h1>Package Checklist</h1>
-      <router-link :to="`/package/${$route.params.id}`" class="btn-secondary">Back to Package</router-link>
+      <router-link :to="{ name: 'PackageDetail', params: { packageId: $route.params.packageId } }" class="btn-secondary">Back to Package</router-link>
     </header>
 
     <main class="content">
@@ -30,8 +30,8 @@
               <button @click="addDocument('medicalRecords')" class="btn-small">Add</button>
             </div>
 
-            <div v-if="currentPackage.documents.medicalRecords.length > 0" class="items-list">
-              <div v-for="(item, index) in currentPackage.documents.medicalRecords" :key="index" class="item-row">
+            <div v-if="packageDocuments.medicalRecords.length > 0" class="items-list">
+              <div v-for="(item, index) in packageDocuments.medicalRecords" :key="index" class="item-row">
                 <span>{{ item }}</span>
                 <button @click="removeDocument('medicalRecords', index)" class="btn-remove">Remove</button>
               </div>
@@ -55,8 +55,8 @@
               <button @click="addDocument('accidentReports')" class="btn-small">Add</button>
             </div>
 
-            <div v-if="currentPackage.documents.accidentReports.length > 0" class="items-list">
-              <div v-for="(item, index) in currentPackage.documents.accidentReports" :key="index" class="item-row">
+            <div v-if="packageDocuments.accidentReports.length > 0" class="items-list">
+              <div v-for="(item, index) in packageDocuments.accidentReports" :key="index" class="item-row">
                 <span>{{ item }}</span>
                 <button @click="removeDocument('accidentReports', index)" class="btn-remove">Remove</button>
               </div>
@@ -80,8 +80,8 @@
               <button @click="addDocument('photographs')" class="btn-small">Add</button>
             </div>
 
-            <div v-if="currentPackage.documents.photographs.length > 0" class="items-list">
-              <div v-for="(item, index) in currentPackage.documents.photographs" :key="index" class="item-row">
+            <div v-if="packageDocuments.photographs.length > 0" class="items-list">
+              <div v-for="(item, index) in packageDocuments.photographs" :key="index" class="item-row">
                 <span>{{ item }}</span>
                 <button @click="removeDocument('photographs', index)" class="btn-remove">Remove</button>
               </div>
@@ -117,7 +117,7 @@
 
           <div class="checklist-actions">
             <button @click="saveAndReturn" class="btn-primary">Save & Return</button>
-            <router-link :to="`/package/${currentPackage.id}`" class="btn-secondary">Cancel</router-link>
+            <router-link :to="{ name: 'PackageDetail', params: { packageId: currentPackage.packageId } }" class="btn-secondary">Cancel</router-link>
           </div>
 
           <p v-if="error" class="error-message">{{ error }}</p>
@@ -129,15 +129,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { usePackageStore } from '../stores/packageStore'
+import { usePackages } from '../composables/usePackages'
 
 const router = useRouter()
 const route = useRoute()
-const { getPackageById, updatePackageStatus, addDocument: addDocumentToStore, removeDocument: removeDocumentFromStore } = usePackageStore()
+const { currentPackage, loading, fetchPackageById, updatePackage } = usePackages()
 
-const currentPackage = ref(null)
 const newMedicalRecord = ref('')
 const newAccidentReport = ref('')
 const newPhotograph = ref('')
@@ -145,7 +144,18 @@ const newStatus = ref('in-progress')
 const error = ref('')
 const success = ref('')
 
-const addDocument = (category) => {
+const packageDocuments = computed(() => {
+  if (!currentPackage.value?.documents) {
+    return {
+      medicalRecords: [],
+      accidentReports: [],
+      photographs: []
+    }
+  }
+  return currentPackage.value.documents
+})
+
+const addDocument = async (category) => {
   error.value = ''
   success.value = ''
   
@@ -173,34 +183,68 @@ const addDocument = (category) => {
     newPhotograph.value = ''
   }
   
-  addDocumentToStore(route.params.id, category, documentName)
-  success.value = 'Document added successfully'
-  setTimeout(() => {
-    success.value = ''
-  }, 2000)
+  try {
+    const updatedDocs = { ...packageDocuments.value }
+    updatedDocs[category].push(documentName)
+    await updatePackage(route.params.packageId, { documents: updatedDocs })
+    success.value = 'Document added successfully'
+    setTimeout(() => {
+      success.value = ''
+    }, 2000)
+  } catch (err) {
+    error.value = 'Failed to add document'
+    console.error('Error adding document:', err)
+  }
 }
 
-const removeDocument = (category, index) => {
-  removeDocumentFromStore(route.params.id, category, index)
+const removeDocument = async (category, index) => {
+  try {
+    const updatedDocs = { ...packageDocuments.value }
+    updatedDocs[category].splice(index, 1)
+    await updatePackage(route.params.packageId, { documents: updatedDocs })
+  } catch (err) {
+    error.value = 'Failed to remove document'
+    console.error('Error removing document:', err)
+  }
 }
 
-const saveAndReturn = () => {
+const saveAndReturn = async () => {
   error.value = ''
   
   // Validate at least one medical record
-  if (currentPackage.value.documents.medicalRecords.length === 0) {
+  if (packageDocuments.value.medicalRecords.length === 0) {
     error.value = 'At least one medical record is required'
     return
   }
   
-  updatePackageStatus(route.params.id, newStatus.value)
-  router.push({ name: 'PackageDetail', params: { id: route.params.id } })
+  try {
+    await updatePackage(route.params.packageId, { status: newStatus.value })
+    router.push({ name: 'PackageDetail', params: { packageId: route.params.packageId } })
+  } catch (err) {
+    error.value = 'Failed to save changes'
+    console.error('Error saving:', err)
+  }
 }
 
-onMounted(() => {
-  currentPackage.value = getPackageById(route.params.id)
-  if (currentPackage.value) {
-    newStatus.value = currentPackage.value.status
+onMounted(async () => {
+  try {
+    await fetchPackageById(route.params.packageId)
+    if (currentPackage.value) {
+      newStatus.value = currentPackage.value.status || 'in-progress'
+      // Initialize documents structure if it doesn't exist
+      if (!currentPackage.value.documents) {
+        await updatePackage(route.params.packageId, {
+          documents: {
+            medicalRecords: [],
+            accidentReports: [],
+            photographs: []
+          }
+        })
+      }
+    }
+  } catch (err) {
+    error.value = 'Failed to load package'
+    console.error('Error loading package:', err)
   }
 })
 </script>

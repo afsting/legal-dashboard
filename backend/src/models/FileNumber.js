@@ -8,14 +8,20 @@ class FileNumber {
     const fileId = uuidv4();
     const item = {
       fileId,
-      packageId: fileData.packageId || null,
-      clientId: fileData.clientId || null,
       fileNumber: fileData.fileNumber,
       description: fileData.description || null,
       status: fileData.status || 'active',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
+    if (fileData.packageId) {
+      item.packageId = fileData.packageId;
+    }
+
+    if (fileData.clientId) {
+      item.clientId = fileData.clientId;
+    }
 
     await dynamodb.put({
       TableName: FILE_NUMBERS_TABLE,
@@ -61,6 +67,12 @@ class FileNumber {
 
   static async update(fileId, updates) {
     const updateData = { ...updates, updatedAt: new Date().toISOString() };
+
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === null || updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
     
     const updateExpression = Object.keys(updateData)
       .map(key => `${key} = :${key}`)

@@ -3,17 +3,20 @@ const Package = require('../models/Package');
 const packageController = {
   async create(req, res) {
     try {
-      const { clientId, name, description, type, status } = req.body;
+      const { clientId, fileNumberId, name, description, recipient, type, status, documents } = req.body;
 
       if (!clientId || !name) {
         return res.status(400).json({ error: 'ClientId and name are required' });
       }
 
       const pkg = await Package.create(clientId, {
+        fileNumberId,
         name,
         description,
+        recipient,
         type,
         status,
+        documents,
       });
 
       res.status(201).json(pkg);
@@ -47,6 +50,18 @@ const packageController = {
       res.json(packages);
     } catch (error) {
       console.error('Get packages by client error:', error);
+      res.status(500).json({ error: 'Failed to retrieve packages' });
+    }
+  },
+
+  async getByFileNumberId(req, res) {
+    try {
+      const { fileNumberId } = req.params;
+      const packages = await Package.getByFileNumberId(fileNumberId);
+
+      res.json(packages);
+    } catch (error) {
+      console.error('Get packages by file number error:', error);
       res.status(500).json({ error: 'Failed to retrieve packages' });
     }
   },

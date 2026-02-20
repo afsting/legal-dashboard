@@ -3,12 +3,15 @@
     <header class="navbar">
       <h1>User Management</h1>
       <div class="nav-buttons">
-        <router-link to="/dashboard" class="btn-secondary">← Dashboard</router-link>
+        <router-link :to="{ name: 'Dashboard' }" class="btn-secondary">← Dashboard</router-link>
         <button @click="logout" class="btn-logout">Logout</button>
       </div>
     </header>
 
     <main class="content">
+      <div v-if="error" class="error-banner">
+        {{ error }}
+      </div>
       <!-- Pending Approvals Section -->
       <section class="section">
         <div class="section-header">
@@ -196,14 +199,14 @@ const handleRoleChange = async (userId, newRole) => {
 
 const logout = () => {
   authLogout()
-  router.push('/login')
+  router.replace({ name: 'Login' })
 }
 
 onMounted(async () => {
   // Check if user is admin
-  if (currentUser.value?.role !== 'admin') {
+  if (!currentUser.value?.isAdmin && !currentUser.value?.groups?.includes('admin')) {
     alert('Admin access required')
-    router.push('/dashboard')
+    router.push({ name: 'Dashboard' })
     return
   }
 
@@ -211,6 +214,7 @@ onMounted(async () => {
     await Promise.all([fetchPendingUsers(), fetchAllUsers()])
   } catch (err) {
     console.error('Error loading users:', err)
+    // Silently fail - show empty state instead of crashing
   }
 })
 </script>
@@ -240,6 +244,16 @@ onMounted(async () => {
 .nav-buttons {
   display: flex;
   gap: 1rem;
+}
+
+.error-banner {
+  margin: 1rem 2rem;
+  padding: 0.75rem 1rem;
+  background: #fff3cd;
+  color: #664d03;
+  border: 1px solid #ffecb5;
+  border-radius: 6px;
+  font-weight: 600;
 }
 
 .btn-secondary {

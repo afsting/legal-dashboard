@@ -131,6 +131,110 @@ VITE_ALLOWED_EMAILS=usafsting@gmail.com
 - Custom CSS with gradient themes
 - localStorage for persistence
 
+## Coding Standards & Development Guidelines
+
+Copilot must follow these guidelines to maintain clean, consistent, low-slop code throughout this repository.
+
+### 1. Begin With an Intent Block
+Before generating code, define:
+- The purpose of the file or function
+- Expected inputs and outputs
+- Constraints or edge cases
+
+If no intent exists, request one before proceeding.
+
+### 2. Define Data Shapes Before Implementing Logic
+Generate these first:
+- Interfaces (via JSDoc or TypeScript)
+- Types
+- Enums
+- Schemas
+
+This ensures predictable structure and reduces improvisation.
+
+### 3. Produce Small, Single-Responsibility Functions
+Break tasks into clear steps using comments:
+```javascript
+// Step 1: Parse input
+// Step 2: Validate
+// Step 3: Transform
+// Step 4: Persist
+```
+Each step should map to a focused, testable function.
+
+### 4. Prefer Refactoring Over Extending
+When modifying existing code:
+- Rewrite for clarity
+- Remove duplication
+- Improve safety
+- Simplify logic
+
+**Do not extend messy or unclear code.**
+
+### 5. Treat First Drafts as Scaffolding
+Expected workflow:
+1. Generate
+2. Review
+3. Regenerate with constraints
+4. Finalize
+
+Initial output is not considered final.
+
+### 6. Provide Clear Explanations When Asked
+Be able to explain:
+- What a function does
+- Missing edge cases
+- Potential failure modes
+
+If the explanation is unclear, refactor the code.
+
+### 7. Follow Repository Style Rules
+Adhere to:
+- ESLint configuration (if exists)
+- Prettier formatting (if configured)
+- Established naming conventions
+- Existing code patterns
+
+Generated code must not violate these rules.
+
+### 8. Treat TODO Comments as Authoritative
+When TODOs are present, implement them directly:
+```javascript
+// TODO: sanitize input
+// TODO: handle missing user
+// TODO: log errors
+```
+
+### 9. Support a Test-First Workflow
+When appropriate, generate tests before implementation:
+- Unit tests
+- Integration tests
+- Edge-case tests
+
+Tests define the contract and reduce slop.
+
+### 10. Follow Existing Project Patterns
+Match established patterns in this repository:
+- Vue patterns (Composition API, reactive/ref usage, onMounted lifecycle)
+- Error handling (try/catch with specific error messages)
+- Logging (console.error for errors, console.log for debug)
+- API structure (JSON responses, consistent error handling)
+- CSS patterns (custom CSS, gradient themes, consistent spacing)
+- Router patterns (dynamic route imports, protected routes via meta guards)
+
+**Consistency is prioritized over novelty.**
+
+### Summary
+Prioritize:
+- Clarity over cleverness
+- Structure over speed
+- Small functions over monolithic blocks
+- Predictable patterns over innovation
+- Adherence to intent
+- Refactoring over extension
+
+These rules ensure fast development without accumulating sloppy or inconsistent code.
+
 ## Important Notes for Next Session
 - Always run from: `C:\Users\af_st\git\demand_developer`
 - Dev server: `npm run dev` (background task available)

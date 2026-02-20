@@ -1,0 +1,15 @@
+{
+  "aws_project_region": "us-east-1",
+  "aws_cognito_region": "us-east-1",
+  "aws_user_pools_id": "us-east-1_hPpfv1YSS",
+  "aws_user_pools_web_client_id": "3imu8ssrk5c4oqtc6sfq7iigkv",
+  "oauth": {
+    "domain": "legal-dashboard-315326805073.auth.us-east-1.amazoncognito.com",
+    "scope": ["email", "openid", "profile"],
+    "redirectSignIn": "http://localhost:5173/,https://d1bkh7cjshkl4w.cloudfront.net/",
+    "redirectSignOut": "http://localhost:5173/,https://d1bkh7cjshkl4w.cloudfront.net/",
+    "responseType": "code"
+  },
+  "federationTarget": "COGNITO_USER_POOLS",
+  "aws_cognito_social_providers": []
+}

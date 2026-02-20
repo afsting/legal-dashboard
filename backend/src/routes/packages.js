@@ -13,6 +13,9 @@ router.post('/', packageController.create);
 // Get packages by client ID
 router.get('/client/:clientId', packageController.getByClientId);
 
+// Get packages by file number ID
+router.get('/file-number/:fileNumberId', packageController.getByFileNumberId);
+
 // Get a specific package
 router.get('/:packageId', packageController.getById);
 

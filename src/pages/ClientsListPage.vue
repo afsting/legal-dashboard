@@ -3,8 +3,8 @@
     <div class="navbar">
       <h1>Legal Dashboard</h1>
       <div class="user-menu">
-        <router-link to="/dashboard" class="btn-back">← Dashboard</router-link>
-        <router-link to="/settings" class="btn-settings">Settings</router-link>
+        <router-link :to="{ name: 'Dashboard' }" class="btn-back">← Dashboard</router-link>
+        <router-link :to="{ name: 'Settings' }" class="btn-settings">Settings</router-link>
         <button @click="handleLogout" class="btn-logout">Logout</button>
       </div>
     </div>
@@ -188,7 +188,7 @@ const filteredClients = computed(() => {
 
 const handleLogout = () => {
   logout()
-  router.push({ name: 'Login' })
+  router.replace({ name: 'Login' })
 }
 
 const formatDate = (date) => {

@@ -2,31 +2,45 @@
 
 A client-centric web-based application for managing legal cases, clients, and demand packages at a law firm. Organize clients → file numbers (court cases) → demand packages with comprehensive document management.
 
+## 🚀 Production Deployment
+
+**Live Application**: https://d1a0t4zzh748tj.cloudfront.net  
+**API Endpoint**: https://ozzx2wkqy1.execute-api.us-east-1.amazonaws.com/prod/  
+**AWS Region**: us-east-1  
+**Admin User**: af_sting@yahoo.com
+
 ## Documentation
 
 📚 **Detailed Documentation:**
 - [Architecture](docs/ARCHITECTURE.md) - Infrastructure, services, and deployment
 - [Data Model](docs/DATA_MODEL.md) - Database schema and relationships
 - [UI Design](docs/UI_DESIGN.md) - Component structure and design system
+- [Copilot Instructions](copilot_instructions.md) - Developer continuation guide & technical notes
 
 ## Project Overview
 
-This application manages the complete lifecycle of legal case management for law firms, supporting multiple file numbers per client (one per court case) and multiple functions within each case.
+This application manages the complete lifecycle of legal case management for law firms, supporting multiple file numbers per client (one per court case) and comprehensive document management with versioning.
 
-### Current Implementation
+### ✅ Completed Features
 - **Authentication**: JWT-based authentication with bcrypt password hashing
-- **Client Management**: CRUD operations for clients with user isolation
+- **Client Management**: Firm-wide client visibility (all users see all clients)
 - **File Numbers**: Court case tracking associated with clients
-- **Database**: DynamoDB via LocalStack for local development
-- **Storage**: S3 via LocalStack (prepared for document management)
+- **Document Management**: S3 presigned URL uploads with versioning & soft delete
+  - Multi-file upload with drag-and-drop
+  - Files up to 5GB supported (bypasses API Gateway limits)
+  - Document version history
+  - Soft delete (preserves S3 versions)
+- **Database**: DynamoDB on AWS (production) and LocalStack (development)
+- **Storage**: S3 with versioning for document storage
 - **API**: RESTful Express.js backend with JWT middleware
+- **Hosting**: CloudFront + S3 static website hosting
+- **Infrastructure**: AWS CDK deployment automation
 
-### Planned Features
+### 🔜 Planned Features
+- **Document Downloads**: Signed URL downloads for specific versions
 - **Demand Packages**: Create structured demand letter packages
-- **Document Management**: Upload and organize case documents
 - **Workflow Checklists**: Track case progress with custom checklists
 - **Settings**: User preferences and system configuration
-- **AWS Migration**: Deploy to production AWS environment
 - **SDK Migration**: Upgrade from AWS SDK v2 to v3
 
 ## Tech Stack
@@ -109,6 +123,7 @@ DYNAMODB_TABLE_CLIENTS=clients
 DYNAMODB_TABLE_PACKAGES=packages
 DYNAMODB_TABLE_FILE_NUMBERS=file-numbers
 DYNAMODB_TABLE_WORKFLOWS=workflows
+DYNAMODB_TABLE_DOCUMENTS=documents
 S3_BUCKET_DOCUMENTS=legal-documents-dev
 ```
 
@@ -140,7 +155,7 @@ npm run dev
 - `GET /api/auth/me` - Get current user
 
 ### Clients
-- `GET /api/clients` - List all clients for user
+- `GET /api/clients` - List all clients (firm-wide)
 - `GET /api/clients/:clientId` - Get client details
 - `POST /api/clients` - Create new client
 - `PUT /api/clients/:clientId` - Update client
@@ -153,6 +168,61 @@ npm run dev
 - `PUT /api/file-numbers/:fileId` - Update file number
 - `DELETE /api/file-numbers/:fileId` - Delete file number
 
+### Documents
+- `POST /api/file-numbers/:fileId/documents/presigned-url` - Get S3 upload URL
+- `POST /api/file-numbers/:fileId/documents/confirm` - Confirm upload completion
+- `GET /api/file-numbers/:fileId/documents` - List documents for file number
+- `GET /api/file-numbers/:fileId/documents/:documentId/versions` - List document versions
+- `DELETE /api/file-numbers/:fileId/documents/:documentId` - Soft delete document
+
+## AWS Deployment
+
+### Deploy to Production
+```bash
+# Deploy backend + frontend together
+cd infrastructure
+npm run deploy:staging -- -FrontendOrigin https://d1a0t4zzh748tj.cloudfront.net
+
+# Or deploy separately:
+
+# 1. Build frontend
+cd legal_dashboard
+npm run build
+
+# 2. Deploy both backend and frontend
+cd infrastructure
+npm run deploy:staging -- -FrontendOrigin https://d1a0t4zzh748tj.cloudfront.net
+```
+
+### View Backend Logs
+```bash
+aws logs tail /aws/lambda/LegalDashboardStack-BackendFunction --follow --region us-east-1
+```
+
+### Check DynamoDB Tables
+```bash
+# List all clients
+aws dynamodb scan --table-name clients --region us-east-1
+
+# Query documents for a file
+aws dynamodb query --table-name documents \
+  --key-condition-expression "fileId = :fid" \
+  --expression-attribute-values '{":fid":{"S":"file-id-here"}}' \
+  --region us-east-1
+```
+
+### Check S3 Documents
+```bash
+# List all documents
+aws s3 ls s3://legal-documents-315326805073-us-east-1/clients/ --recursive --region us-east-1
+
+# List versions for a document
+aws s3api list-object-versions \
+  --bucket legal-documents-315326805073-us-east-1 \
+  --prefix clients/client-id/file-numbers/file-number/docs/ \
+  --region us-east-1
+```
+
 ## Development
 
 ### Testing LocalStack
@@ -164,9 +234,10 @@ aws dynamodb list-tables --endpoint-url=http://localhost:4566
 aws dynamodb scan --table-name clients --endpoint-url=http://localhost:4566
 ```
 
-### Known Issues
+### Known Issues & Technical Debt
 - AWS SDK v2 is deprecated, migration to v3 needed
-- File Numbers table uses Scan instead of GSI for client queries
+- Document downloads not yet implemented (needs signed URL endpoint)
+- Multi-file uploads are sequential (could be parallelized for better performance)
 
 ### Google OAuth Configuration
 
@@ -195,8 +266,13 @@ aws dynamodb scan --table-name clients --endpoint-url=http://localhost:4566
 ### 3. Client Details (`/client/:clientId`)
 - File numbers for selected client
 - Each file number shows court case info
-- Add new file number modal
-- Status badges for file numbers
+- Add new file number modalUpload, view, and manage documents
+  - Drag-and-drop or file picker
+  - Multi-file uploads (up to 5GB each)
+  - Document versioning (same filename creates new version)
+  - Version history viewing
+  - Soft delete functionality
+- Computed count of demand packages and document
 - Navigate to file number functions
 
 ### 4. File Number Details (`/client/:clientId/file/:fileNumberId`)
@@ -255,22 +331,54 @@ src/
 │   ├── DemandPackagesPage.vue       # Demand packages list for a file number
 │   ├── PackageCreatePage.vue        # Create new demand package
 │   ├── PackageDetailPage.vue        # Package details view
-│   ├── WorkflowPage.vue             # Document checklist
-│   └── SettingsPage.vue             # Email allowlist management
-├── stores/                          # State management (composables)
-│   ├── authStore.js                 # Google OAuth authentication
-│   ├── clientStore.js               # Clients and file numbers
-│   └── packageStore.js              # Demand packages and documents
-├── App.vue                          # Root component
-├── router.js                        # Vue Router configuration
-├── main.js                          # App entry point
-└── style.css                        # Global styles
+│  Architecture Highlights
 
+### Document Upload Flow (S3 Presigned URLs)
+1. Frontend requests presigned URL from backend
+2. File uploads **directly to S3** (bypasses API Gateway 10MB limit)
+3. Frontend confirms upload to backend
+4. Backend creates document metadata in DynamoDB
 
-## Key Features
+**Benefits:**
+- Supports files up to 5GB
+- Faster uploads (direct to S3)
+- No Lambda timeout issues
+- Lower costs
 
-### Authentication
-- Google OAuth 2.0 with JWT decoding
+### S3 Document Storage
+- **Bucket**: legal-documents-315326805073-us-east-1
+- **Versioning**: Enabled (same filename creates new version)
+- **Key Format**: `clients/{clientId}/file-numbers/{fileNumber}/docs/{filename}`
+- **Soft Delete**: Metadata marked as deleted, S3 versions preserved
+
+### DynamoDB Schema
+- **users**: email (PK)
+- **clients**: clientId (PK), createdBy
+- **file-numbers**: fileId (PK), clientId (GSI), packageId (GSI - optional)
+- **documents**: fileId (PK), documentId (SK), fileName, s3Key, latestVersionId
+- **packages**: packageId (PK), clientId (GSI)
+- **workflows**: workflowId (PK), packageId (GSI)
+
+**Important**: DynamoDB GSI keys cannot be NULL - omit the attribute entirely if not set.
+
+### CloudFront Hosting
+- **Distribution**: d1a0t4zzh748tj.cloudfront.net
+- **Origin**: S3 static website bucket
+- **SPA Routing**: 403/404 errors redirect to /index.html
+- **Deployment**: Automated via CDK S3 bucket deployment
+
+## Future Enhancements
+
+### High Priority
+- Document download with signed URLs (specific version selection)
+- Progress indicators for large file uploads
+- Parallel multi-file uploads
+
+### Additional Functions
+- Document preview and thumbnails
+- Motion Management within file numbers
+- Settlement Tracking
+- Bulk document operationsth JWT decoding
 - Email allowlist for authorized users
 - Session persistence using localStorage
 - Protected routes (requires authentication)

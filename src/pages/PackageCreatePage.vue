@@ -2,8 +2,14 @@
   <div class="package-create">
     <header class="navbar">
       <h1>Create New Demand Package</h1>
-      <router-link v-if="$route.params.clientId && $route.params.fileNumberId" :to="`/client/${$route.params.clientId}/file/${$route.params.fileNumberId}/packages`" class="btn-secondary">Back to Packages</router-link>
-      <router-link v-else to="/" class="btn-secondary">Back to Dashboard</router-link>
+      <router-link
+        v-if="$route.params.clientId && $route.params.fileNumberId"
+        :to="{ name: 'DemandPackages', params: { clientId: $route.params.clientId, fileNumberId: $route.params.fileNumberId } }"
+        class="btn-secondary"
+      >
+        Back to Packages
+      </router-link>
+      <router-link v-else :to="{ name: 'Dashboard' }" class="btn-secondary">Back to Dashboard</router-link>
     </header>
 
     <main class="content">
@@ -59,11 +65,11 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { usePackageStore } from '../stores/packageStore'
+import { usePackages } from '../composables/usePackages'
 
 const router = useRouter()
 const route = useRoute()
-const { addPackage } = usePackageStore()
+const { createPackage } = usePackages()
 
 const formData = ref({
   name: '',
@@ -74,11 +80,11 @@ const formData = ref({
 const successMessage = ref('')
 const errorMessage = ref('')
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   errorMessage.value = ''
   successMessage.value = ''
 
-  if (!formData.value.name || !formData.value.recipient) {
+  if (!formData.value.name) {
     errorMessage.value = 'Please fill in all required fields'
     return
   }
@@ -92,19 +98,32 @@ const handleSubmit = () => {
       return
     }
 
-    const newPackage = addPackage(clientId, fileNumberId, formData.value)
+    const newPackage = await createPackage({
+      clientId,
+      fileNumberId,
+      name: formData.value.name,
+      description: formData.value.description,
+      recipient: formData.value.recipient,
+      status: 'draft',
+      documents: {
+        medicalRecords: [],
+        accidentReports: [],
+        photographs: []
+      }
+    })
     successMessage.value = 'Package created successfully!'
     setTimeout(() => {
-      router.push({ name: 'PackageDetail', params: { id: newPackage.id } })
+      router.push({ name: 'PackageDetail', params: { packageId: newPackage.packageId } })
     }, 500)
   } catch (error) {
     errorMessage.value = 'Error creating package. Please try again.'
+    console.error('Create error:', error)
   }
 }
 
 const handleCancel = () => {
   if (route.params.clientId && route.params.fileNumberId) {
-    router.push(`/client/${route.params.clientId}/file/${route.params.fileNumberId}/packages`)
+    router.push({ name: 'DemandPackages', params: { clientId: route.params.clientId, fileNumberId: route.params.fileNumberId } })
   } else {
     router.push({ name: 'Dashboard' })
   }

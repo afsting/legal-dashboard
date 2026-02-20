@@ -2,7 +2,7 @@
   <div class="client-detail">
     <header class="navbar">
       <h1>Client Detail</h1>
-      <router-link to="/clients" class="btn-secondary">Back to Clients</router-link>
+      <router-link :to="{ name: 'Clients' }" class="btn-secondary">Back to Clients</router-link>
     </header>
 
     <main class="content">

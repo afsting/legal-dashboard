@@ -3,10 +3,10 @@
     <header class="navbar">
       <h1>Legal Dashboard</h1>
       <div class="user-menu">
-        <router-link v-if="currentUser?.role === 'admin'" to="/admin/users" class="btn-admin">
+        <router-link v-if="currentUser?.role === 'admin'" :to="{ name: 'AdminUsers' }" class="btn-admin">
           Admin
         </router-link>
-        <router-link to="/settings" class="btn-settings">Settings</router-link>
+        <router-link :to="{ name: 'Settings' }" class="btn-settings">Settings</router-link>
         <button @click="handleLogout" class="btn-logout">Logout</button>
       </div>
     </header>
@@ -18,7 +18,7 @@
       </div>
 
       <div class="dashboard-grid">
-        <router-link to="/clients" class="dashboard-card">
+        <router-link :to="{ name: 'Clients' }" class="dashboard-card">
           <div class="card-icon">👥</div>
           <h3>Client Management</h3>
           <p>View and manage all your clients</p>
@@ -27,7 +27,7 @@
           </div>
         </router-link>
 
-        <router-link v-if="currentUser?.role === 'admin'" to="/admin/users" class="dashboard-card admin-card">
+        <router-link v-if="currentUser?.role === 'admin'" :to="{ name: 'AdminUsers' }" class="dashboard-card admin-card">
           <div class="card-icon">👤</div>
           <h3>User Management</h3>
           <p>Approve and manage user accounts</p>
@@ -76,7 +76,7 @@ const { logout, currentUser } = useAuth()
 
 const handleLogout = () => {
   logout()
-  router.push({ name: 'Login' })
+  router.replace({ name: 'Login' })
 }
 </script>
 

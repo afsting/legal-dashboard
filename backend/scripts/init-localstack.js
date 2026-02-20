@@ -54,6 +54,18 @@ const tables = [
     KeySchema: [{ AttributeName: 'workflowId', KeyType: 'HASH' }],
     AttributeDefinitions: [{ AttributeName: 'workflowId', AttributeType: 'S' }],
     BillingMode: 'PAY_PER_REQUEST'
+  },
+  {
+    TableName: process.env.DYNAMODB_TABLE_DOCUMENTS || 'documents',
+    KeySchema: [
+      { AttributeName: 'fileId', KeyType: 'HASH' },
+      { AttributeName: 'documentId', KeyType: 'RANGE' }
+    ],
+    AttributeDefinitions: [
+      { AttributeName: 'fileId', AttributeType: 'S' },
+      { AttributeName: 'documentId', AttributeType: 'S' }
+    ],
+    BillingMode: 'PAY_PER_REQUEST'
   }
 ];
 
