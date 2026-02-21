@@ -93,8 +93,11 @@ function validateRequest(body) {
  * @returns {Promise<string>} Complete query with context
  */
 async function buildQueryWithContext(query, clientId, fileNumberId) {
+  console.log('[Agent] buildQueryWithContext called with:', { query, clientId, fileNumberId });
+  
   const hasContext = clientId || fileNumberId;
   if (!hasContext) {
+    console.log('[Agent] No context provided, returning query as-is');
     return query;
   }
 
@@ -108,22 +111,29 @@ async function buildQueryWithContext(query, clientId, fileNumberId) {
   // Fetch and add actual file number string
   if (fileNumberId) {
     try {
+      console.log('[Agent] Fetching file number record for ID:', fileNumberId);
       const fileNumberRecord = await FileNumber.getById(fileNumberId);
+      console.log('[Agent] File number record:', fileNumberRecord);
+      
       if (fileNumberRecord && fileNumberRecord.fileNumber) {
+        console.log('[Agent] Using actual file number:', fileNumberRecord.fileNumber);
         contextParts.push(`File Number: ${fileNumberRecord.fileNumber}`);
       } else {
+        console.log('[Agent] No file number found, using ID as fallback');
         // Fallback to UUID if lookup fails
         contextParts.push(`File Number ID: ${fileNumberId}`);
       }
     } catch (error) {
-      console.error('Failed to fetch file number:', error.message);
+      console.error('[Agent] Failed to fetch file number:', error.message);
       // Fallback to UUID if lookup fails
       contextParts.push(`File Number ID: ${fileNumberId}`);
     }
   }
 
   const context = `Context: ${contextParts.join(', ')}`;
-  return `${context}\n\nQuery: ${query}`;
+  const fullQuery = `${context}\n\nQuery: ${query}`;
+  console.log('[Agent] Final query with context:', fullQuery);
+  return fullQuery;
 }
 
 // ============================================================================
@@ -304,6 +314,8 @@ async function invokeBedrockAgent(fullQuery) {
  */
 exports.invokeAgent = async (req, res) => {
   try {
+    console.log('[Agent] Request body:', JSON.stringify(req.body, null, 2));
+    
     // Step 1: Validate
     const errors = validateRequest(req.body);
     if (errors.length > 0) {
@@ -311,12 +323,15 @@ exports.invokeAgent = async (req, res) => {
     }
 
     const { query, clientId, fileNumberId } = req.body;
+    console.log('[Agent] Extracted params:', { query, clientId, fileNumberId });
 
     // Step 2: Build query (now async, fetches actual file number)
     const fullQuery = await buildQueryWithContext(query, clientId, fileNumberId);
+    console.log('[Agent] Invoking Bedrock with query length:', fullQuery.length);
 
     // Step 3: Invoke agent
     const answer = await invokeBedrockAgent(fullQuery);
+    console.log('[Agent] Received answer length:', answer.length);
 
     // Step 4: Return response
     const response = {

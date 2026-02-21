@@ -222,11 +222,15 @@ function extractAnswerText(data) {
 async function queryAgent(query) {
   const context = pageContext.value
   
+  console.log('[AgentSidebar] Sending query with context:', { query, context })
+  
   const response = await api.post('/agent/query', {
     query,
     clientId: context.clientId,
     fileNumberId: context.fileNumberId,
   })
+  
+  console.log('[AgentSidebar] Received response:', response)
   
   return extractAnswerText(response)
 }
