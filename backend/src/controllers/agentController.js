@@ -10,6 +10,7 @@
  */
 
 const { BedrockAgentRuntimeClient, InvokeAgentCommand } = require('@aws-sdk/client-bedrock-agent-runtime');
+const FileNumber = require('../models/FileNumber');
 
 // ============================================================================
 // TYPES & CONSTANTS
@@ -82,23 +83,44 @@ function validateRequest(body) {
 /**
  * Builds the full query with optional case context
  * Step 1: Extract context parameters
- * Step 2: Format context string if parameters provided
- * Step 3: Combine context with user query
+ * Step 2: Fetch actual file number string from database if ID provided
+ * Step 3: Format context string with human-readable values
+ * Step 4: Combine context with user query
  * 
  * @param {string} query - User's question
  * @param {string} [clientId] - Optional client ID
- * @param {string} [fileNumberId] - Optional file number ID
- * @returns {string} Complete query with context
+ * @param {string} [fileNumberId] - Optional file number ID (UUID)
+ * @returns {Promise<string>} Complete query with context
  */
-function buildQueryWithContext(query, clientId, fileNumberId) {
+async function buildQueryWithContext(query, clientId, fileNumberId) {
   const hasContext = clientId || fileNumberId;
   if (!hasContext) {
     return query;
   }
 
   const contextParts = [];
-  if (clientId) contextParts.push(`Client ID: ${clientId}`);
-  if (fileNumberId) contextParts.push(`File Number: ${fileNumberId}`);
+  
+  // Add client context
+  if (clientId) {
+    contextParts.push(`Client ID: ${clientId}`);
+  }
+  
+  // Fetch and add actual file number string
+  if (fileNumberId) {
+    try {
+      const fileNumberRecord = await FileNumber.getById(fileNumberId);
+      if (fileNumberRecord && fileNumberRecord.fileNumber) {
+        contextParts.push(`File Number: ${fileNumberRecord.fileNumber}`);
+      } else {
+        // Fallback to UUID if lookup fails
+        contextParts.push(`File Number ID: ${fileNumberId}`);
+      }
+    } catch (error) {
+      console.error('Failed to fetch file number:', error.message);
+      // Fallback to UUID if lookup fails
+      contextParts.push(`File Number ID: ${fileNumberId}`);
+    }
+  }
 
   const context = `Context: ${contextParts.join(', ')}`;
   return `${context}\n\nQuery: ${query}`;
@@ -290,8 +312,8 @@ exports.invokeAgent = async (req, res) => {
 
     const { query, clientId, fileNumberId } = req.body;
 
-    // Step 2: Build query
-    const fullQuery = buildQueryWithContext(query, clientId, fileNumberId);
+    // Step 2: Build query (now async, fetches actual file number)
+    const fullQuery = await buildQueryWithContext(query, clientId, fileNumberId);
 
     // Step 3: Invoke agent
     const answer = await invokeBedrockAgent(fullQuery);
