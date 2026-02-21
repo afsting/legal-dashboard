@@ -19,7 +19,7 @@ const { BedrockAgentRuntimeClient, InvokeAgentCommand } = require('@aws-sdk/clie
  * @typedef {Object} AgentRequest
  * @property {string} query - The user's question
  * @property {string} [clientId] - Optional client identifier for context
- * @property {string} [fileNumber] - Optional file number for context
+ * @property {string} [fileNumberId] - Optional file number identifier for context
  */
 
 /**
@@ -87,18 +87,18 @@ function validateRequest(body) {
  * 
  * @param {string} query - User's question
  * @param {string} [clientId] - Optional client ID
- * @param {string} [fileNumber] - Optional file number
+ * @param {string} [fileNumberId] - Optional file number ID
  * @returns {string} Complete query with context
  */
-function buildQueryWithContext(query, clientId, fileNumber) {
-  const hasContext = clientId || fileNumber;
+function buildQueryWithContext(query, clientId, fileNumberId) {
+  const hasContext = clientId || fileNumberId;
   if (!hasContext) {
     return query;
   }
 
   const contextParts = [];
   if (clientId) contextParts.push(`Client ID: ${clientId}`);
-  if (fileNumber) contextParts.push(`File Number: ${fileNumber}`);
+  if (fileNumberId) contextParts.push(`File Number: ${fileNumberId}`);
 
   const context = `Context: ${contextParts.join(', ')}`;
   return `${context}\n\nQuery: ${query}`;
@@ -288,10 +288,10 @@ exports.invokeAgent = async (req, res) => {
       return res.status(400).json({ error: errors.join('; ') });
     }
 
-    const { query, clientId, fileNumber } = req.body;
+    const { query, clientId, fileNumberId } = req.body;
 
     // Step 2: Build query
-    const fullQuery = buildQueryWithContext(query, clientId, fileNumber);
+    const fullQuery = buildQueryWithContext(query, clientId, fileNumberId);
 
     // Step 3: Invoke agent
     const answer = await invokeBedrockAgent(fullQuery);
@@ -301,7 +301,7 @@ exports.invokeAgent = async (req, res) => {
       answer,
       query,
       ...(clientId && { clientId }),
-      ...(fileNumber && { fileNumber }),
+      ...(fileNumberId && { fileNumberId }),
     };
 
     res.json(response);

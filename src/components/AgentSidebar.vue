@@ -8,7 +8,10 @@
     <!-- Chat sidebar - shown when open -->
     <div class="agent-sidebar" v-if="sidebarOpen">
       <header>
-        <span>Legal Assistant</span>
+        <div class="header-title">
+          <span>Legal Assistant</span>
+          <span class="context-badge">{{ contextDescription }}</span>
+        </div>
         <button @click="toggleSidebar">Close</button>
       </header>
 
@@ -47,21 +50,24 @@
 
 <script setup>
 /**
- * INTENT: Legal Assistant Chat Sidebar
+ * INTENT: Legal Assistant Chat Sidebar with Context Awareness
  * 
  * Purpose: Provide a modal chat interface for users to query the Bedrock agent
- * about legal documents. Manages conversation state, message history, and
+ * about legal documents. Automatically detects current page context (client/file number)
+ * and includes it in queries. Manages conversation state, message history, and
  * error handling.
  * 
  * Features:
  * - Toggle sidebar open/closed
- * - Send queries to agent endpoint
+ * - Automatically detect and use current page context
+ * - Send queries to agent endpoint with context
  * - Display message history (user and agent)
  * - Handle errors gracefully
  * - Show loading state while querying
  */
 
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import api from '../utils/api'
 
 // ============================================================================
@@ -79,6 +85,51 @@ import api from '../utils/api'
  * @property {string} answer - The agent's response text
  * @property {string} [response] - Alternative field name for response
  */
+
+/**
+ * @typedef {Object} PageContext
+ * @property {string} [clientId] - Current client ID from route
+ * @property {string} [fileNumberId] - Current file number ID from route
+ */
+
+// ============================================================================
+// ROUTE & CONTEXT
+// ============================================================================
+
+const route = useRoute()
+
+/**
+ * Detects current page context from route parameters
+ * Extracts clientId and fileNumberId if present on current page
+ * 
+ * @returns {PageContext} Current client and file number context
+ */
+function getPageContext() {
+  return {
+    clientId: route.params.clientId || null,
+    fileNumberId: route.params.fileNumberId || null,
+  }
+}
+
+/**
+ * Current page context (reactive)
+ * Updates automatically when route changes
+ */
+const pageContext = computed(() => getPageContext())
+
+/**
+ * Human-readable description of current context
+ * Used for displaying what context is active
+ */
+const contextDescription = computed(() => {
+  if (pageContext.value.fileNumberId) {
+    return `File #${pageContext.value.fileNumberId}`
+  }
+  if (pageContext.value.clientId) {
+    return `Client`
+  }
+  return 'General'
+})
 
 // ============================================================================
 // REACTIVE STATE
@@ -157,18 +208,26 @@ function extractAnswerText(data) {
 // ============================================================================
 
 /**
- * Sends query to agent endpoint
+ * Sends query to agent endpoint with automatic page context
  * 
- * Step 1: Send POST request to /agent/query
- * Step 2: Extract answer from response
- * Step 3: Return agent's response text
+ * Step 1: Get current page context (clientId, fileNumberId)
+ * Step 2: Send POST request to /agent/query with context
+ * Step 3: Extract answer from response
+ * Step 4: Return agent's response text
  * 
  * @param {string} query - User's question
  * @returns {Promise<string>} Agent's response
  * @throws {Error} If API call fails
  */
 async function queryAgent(query) {
-  const response = await api.post('/agent/query', { query })
+  const context = pageContext.value
+  
+  const response = await api.post('/agent/query', {
+    query,
+    clientId: context.clientId,
+    fileNumberId: context.fileNumberId,
+  })
+  
   return extractAnswerText(response)
 }
 
@@ -210,7 +269,7 @@ function clearError() {
  * Step 1: Validate input is not empty
  * Step 2: Prevent duplicate submissions while loading
  * Step 3: Display user message immediately
- * Step 4: Query agent and display response
+ * Step 4: Query agent with page context and display response
  * Step 5: Handle errors gracefully
  * 
  * Assumes: User is authenticated via API middleware
@@ -232,7 +291,7 @@ async function sendMessage() {
   clearError()
 
   try {
-    // Query agent
+    // Query agent (with automatic context)
     const agentResponse = await queryAgent(userMessage)
     
     // Display agent response
@@ -301,6 +360,26 @@ async function sendMessage() {
   background: #2d3a4a;
   color: #fff;
   font-weight: 600;
+  gap: 8px;
+}
+
+.header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.header-title span:first-child {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.context-badge {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.8;
+  color: #cbd5e1;
 }
 
 .agent-sidebar header button {
@@ -310,6 +389,7 @@ async function sendMessage() {
   cursor: pointer;
   font-size: 14px;
   padding: 4px 8px;
+  white-space: nowrap;
 }
 
 .agent-sidebar header button:hover {
