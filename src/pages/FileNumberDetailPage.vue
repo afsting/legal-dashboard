@@ -146,6 +146,7 @@
             <div class="analysis-content">
               {{ selectedDocument?.analysis }}
             </div>
+            <p v-if="analysisJustUpdated" class="analysis-updated-notice">✓ Analysis updated</p>
           </div>
 
           <!-- Chat Section -->
@@ -215,6 +216,7 @@ const chatError = ref('')
 const showAnalysisModal = ref(false)
 const selectedDocument = ref(null)
 const analyzingDocId = ref(null)
+const analysisJustUpdated = ref(false)
 
 const isDescriptionDirty = computed(() => {
   const current = fileNumber.value?.description || ''
@@ -440,10 +442,19 @@ const sendChatMessage = async () => {
       message: chatMessage.value
     })
     
-    // Update selected document with new conversation
+    // Update selected document with new conversation (and analysis if updated)
     selectedDocument.value = {
       ...selectedDocument.value,
-      conversationHistory: response.conversationHistory
+      conversationHistory: response.conversationHistory,
+      ...(response.analysisUpdated && {
+        analysis: response.updatedAnalysis,
+        analyzedAt: new Date().toISOString(),
+      }),
+    }
+
+    if (response.analysisUpdated) {
+      analysisJustUpdated.value = true
+      setTimeout(() => { analysisJustUpdated.value = false }, 3000)
     }
     
     chatMessage.value = ''
@@ -1019,6 +1030,13 @@ onMounted(async () => {
 .send-btn:disabled {
   background: #d1d5db;
   cursor: not-allowed;
+}
+
+.analysis-updated-notice {
+  margin: 0.5rem 0 0 0;
+  color: #059669;
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 .chat-error {

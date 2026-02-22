@@ -7,7 +7,13 @@
  * Usage: node backend/scripts/update-agent-instructions.js
  */
 
-const { BedrockAgentClient, UpdateAgentCommand, CreateAgentAliasCommand } = require('@aws-sdk/client-bedrock-agent');
+const {
+  BedrockAgentClient,
+  UpdateAgentCommand,
+  PrepareAgentCommand,
+  GetAgentCommand,
+  ListAgentVersionsCommand,
+} = require('@aws-sdk/client-bedrock-agent');
 
 const AGENT_ID = 'V5DWKNJJJ2';
 const AGENT_ALIAS_ID = 'KDISPTDPE4';
@@ -59,14 +65,30 @@ Always cite the source document and section when referencing information. If you
 
 When context is provided, prioritize searching for documents related to that specific File Number or Client ID.`;
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForAgentPrepared(client, agentId, timeoutMs = 120000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const getCommand = new GetAgentCommand({ agentId });
+    const currentAgent = await client.send(getCommand);
+    if (currentAgent.agent.agentStatus === 'PREPARED') {
+      return currentAgent.agent;
+    }
+    await sleep(5000);
+  }
+  throw new Error('Agent preparation timed out');
+}
+
 async function updateAgentInstructions() {
   const client = new BedrockAgentClient({ region: REGION });
 
   try {
     console.log('Fetching current agent configuration...');
     
-    // First, get the current agent configuration
-    const { GetAgentCommand } = require('@aws-sdk/client-bedrock-agent');
+    // Step 1: Get current agent configuration
     const getCommand = new GetAgentCommand({ agentId: AGENT_ID });
     const currentAgent = await client.send(getCommand);
     
@@ -89,18 +111,30 @@ async function updateAgentInstructions() {
     console.log('New agent version:', updateResponse.agent.agentVersion);
     
     console.log('\nPreparing agent (this may take 1-2 minutes)...');
-    
-    // Prepare the agent (this compiles the changes)
-    const { PrepareAgentCommand } = require('@aws-sdk/client-bedrock-agent');
+
+    // Step 2: Prepare the agent (compile changes)
     const prepareCommand = new PrepareAgentCommand({ agentId: AGENT_ID });
-    const prepareResponse = await client.send(prepareCommand);
-    console.log('✓ Agent prepared with status:', prepareResponse.agentStatus);
-    
+    await client.send(prepareCommand);
+    const preparedAgent = await waitForAgentPrepared(client, AGENT_ID);
+    console.log('✓ Agent prepared with status:', preparedAgent.agentStatus);
+
+    // Step 3: List versions to confirm DRAFT is updated
+    console.log('\nListing agent versions...');
+    const listVersionsCommand = new ListAgentVersionsCommand({ agentId: AGENT_ID });
+    const versions = await client.send(listVersionsCommand);
+    const summaries = versions.agentVersionSummaries || [];
+    summaries
+      .sort((a, b) => (a.agentVersion === 'DRAFT' ? 1 : 0) - (b.agentVersion === 'DRAFT' ? 1 : 0))
+      .forEach((version) => {
+        console.log(`- Version ${version.agentVersion} (${version.agentStatus}) updated ${version.updatedAt}`);
+      });
+
     console.log('\n✅ Agent instructions updated successfully!');
-    console.log('\nNext steps:');
-    console.log('1. Wait 1-2 minutes for the agent to finish preparing');
-    console.log('2. Test the agent by asking "What file number is this?" on a file number page');
-    console.log('3. The agent should now respond with the actual file number from context');
+    console.log('\nNext steps (publish the new DRAFT version):');
+    console.log('1. Open Bedrock Console > Agents > legal-assistant');
+    console.log('2. Click "Create version" (from DRAFT)');
+    console.log('3. Update alias "default_legal_assistant" to the new version');
+    console.log('4. Test: ask "What file number is this?" on a file number page');
     
   } catch (error) {
     console.error('❌ Error updating agent:', error.message);

@@ -17,6 +17,7 @@
     "rotate:jwt": "powershell -ExecutionPolicy Bypass -File scripts\\rotate-jwt-secret.ps1"
   },
   "dependencies": {
+    "@aws-sdk/client-textract": "^3.995.0",
     "amazon-cognito-identity-js": "^6.3.16",
     "aws-cdk-lib": "^2.100.0",
     "constructs": "^10.3.0"

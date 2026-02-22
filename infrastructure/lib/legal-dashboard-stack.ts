@@ -264,6 +264,19 @@ export class LegalDashboardStack extends cdk.Stack {
       ],
     });
 
+    // S3 Bucket for Extracted Text (kept separate from original documents and any knowledge base assets)
+    const extractedTextBucket = new s3.Bucket(this, 'ExtractedTextBucket', {
+      bucketName: useLocalstack
+        ? 'legal-extracted-text-local'
+        : `legal-extracted-text-${cdk.Aws.ACCOUNT_ID}-${cdk.Aws.REGION}`,
+      removalPolicy,
+      autoDeleteObjects: useLocalstack,
+      versioned: true,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      publicReadAccess: false,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+    });
+
     const jwtSecretContext = this.node.tryGetContext('jwtSecret');
     const jwtExpiry = this.node.tryGetContext('jwtExpiry') || '7d';
 
@@ -293,6 +306,7 @@ export class LegalDashboardStack extends cdk.Stack {
       DYNAMODB_TABLE_WORKFLOWS: workflowsTable.tableName,
       DYNAMODB_TABLE_DOCUMENTS: documentsTable.tableName,
       S3_BUCKET_DOCUMENTS: documentsBucket.bucketName,
+      S3_BUCKET_EXTRACTED_TEXT: extractedTextBucket.bucketName,
     };
 
     const localstackEnv: Record<string, string> = useLocalstack
@@ -318,7 +332,7 @@ export class LegalDashboardStack extends cdk.Stack {
       handler: 'src/lambda.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
       memorySize: 512,
-      timeout: cdk.Duration.seconds(30),
+      timeout: cdk.Duration.seconds(150),
       environment: {
         ...baseEnv,
         ...localstackEnv,
@@ -350,6 +364,16 @@ export class LegalDashboardStack extends cdk.Stack {
       ],
     }));
 
+    // Grant Textract permissions for document text extraction (sync and async)
+    backendFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        'textract:DetectDocumentText',           // Sync API
+        'textract:StartDocumentTextDetection',   // Async API - initiate job
+        'textract:GetDocumentTextDetection',     // Async API - poll results
+      ],
+      resources: ['*'],
+    }));
+
     if (jwtSecret) {
       jwtSecret.grantRead(backendFunction);
     }
@@ -361,6 +385,7 @@ export class LegalDashboardStack extends cdk.Stack {
     workflowsTable.grantReadWriteData(backendFunction);
     documentsTable.grantReadWriteData(backendFunction);
     documentsBucket.grantReadWrite(backendFunction);
+    extractedTextBucket.grantReadWrite(backendFunction);
 
     const allowedOrigins = [
       frontendOrigin,
@@ -473,6 +498,11 @@ export class LegalDashboardStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'DocumentsBucketName', {
       value: documentsBucket.bucketName,
       description: 'Documents S3 Bucket',
+    });
+
+    new cdk.CfnOutput(this, 'ExtractedTextBucketName', {
+      value: extractedTextBucket.bucketName,
+      description: 'Extracted Text S3 Bucket',
     });
 
     new cdk.CfnOutput(this, 'ApiUrl', {

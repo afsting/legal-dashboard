@@ -10,7 +10,7 @@ const { GetObjectCommand, PutObjectCommand, ListObjectVersionsCommand } = requir
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const Document = require('../models/Document');
 const FileNumber = require('../models/FileNumber');
-const { EXTRACTED_TEXT_BUCKET, resolveExtractedTextS3Key, resolveAnalysisS3Key, putTextToS3 } = require('../services/s3Storage');
+const { EXTRACTED_TEXT_BUCKET, resolveExtractedTextS3Key, resolveAnalysisS3Key, putTextToS3, getTextFromS3 } = require('../services/s3Storage');
 const { isAnalysisSupported, extractText, ensureExtractedTextAvailable } = require('../services/textExtraction');
 const { loadConversationHistory, saveConversationHistory } = require('../services/conversationService');
 const { isAgentConfigured, invokeAgent } = require('../services/bedrockService');
@@ -21,6 +21,25 @@ const ANALYSIS_PREVIEW_CHARS = 500;
 const sanitizeFileName = (fileName) => {
   return path.basename(fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
 };
+
+/**
+ * INTENT: Parse the structured JSON response from the Bedrock chat prompt.
+ * Strips markdown code fences, finds the outermost {...}, and JSON.parses it.
+ * Falls back gracefully to a plain-reply shape if parsing fails.
+ */
+function parseBedrockChatResponse(text) {
+  try {
+    const stripped = text.replace(/```json\n?|\n?```/g, '').trim();
+    const start = stripped.indexOf('{');
+    const end = stripped.lastIndexOf('}');
+    if (start !== -1 && end !== -1) {
+      return JSON.parse(stripped.slice(start, end + 1));
+    }
+  } catch {
+    // fall through to default
+  }
+  return { reply: text, analysisUpdated: false, updatedAnalysis: null };
+}
 
 const documentController = {
   async upload(req, res) {
@@ -206,6 +225,18 @@ const documentController = {
         });
       }
 
+      // Load the full current analysis so the AI can update it if needed
+      let currentAnalysis = 'No analysis has been performed yet.';
+      if (document.analysisS3Key) {
+        try {
+          currentAnalysis = await getTextFromS3(EXTRACTED_TEXT_BUCKET, document.analysisS3Key);
+        } catch {
+          currentAnalysis = document.analysis || 'No analysis has been performed yet.';
+        }
+      } else if (document.analysis) {
+        currentAnalysis = document.analysis;
+      }
+
       const fileNumber = await FileNumber.getById(fileId);
       const legalContext = fileNumber?.description || null;
       const conversationHistory = await loadConversationHistory(fileId, documentId, document);
@@ -214,19 +245,44 @@ const documentController = {
         .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
         .join('\n');
 
-      let query = 'You are assisting a legal professional review a document. ';
-      query += 'You have access to the full document text below. ';
+      let query = 'You are a legal document analyst assisting a legal professional.\n\n';
       if (legalContext) {
-        query += `This is for the following legal matter: ${legalContext}. `;
+        query += `LEGAL MATTER CONTEXT: ${legalContext}\n\n`;
       }
+      query += `CURRENT DOCUMENT ANALYSIS:\n${currentAnalysis}\n\n`;
+      query += `DOCUMENT TEXT:\n${documentText}\n\n`;
       if (historyText) {
-        query += `\n\nPrevious conversation:\n${historyText}\n\n`;
+        query += `PREVIOUS CONVERSATION:\n${historyText}\n\n`;
       }
-      query += `\n\nDocument Name: ${document.fileName}\n`;
-      query += `Document Content:\n${documentText}\n\n`;
-      query += `User's current question: ${message}`;
+      query += `USER MESSAGE: ${message}\n\n`;
+      query += 'Instructions:\n';
+      query += '- Answer the user\'s message clearly and helpfully.\n';
+      query += '- If the user provides corrections, identifies parties, adds factual details, or clarifies information about this specific document, incorporate those into an updated analysis.\n';
+      query += '- Only incorporate what the user explicitly states. Do not infer or add unverified details.\n';
+      query += '- If the user is only asking a question (not providing new document facts), do not update the analysis.\n\n';
+      query += 'Respond ONLY with valid JSON (no markdown, no extra text):\n';
+      query += '{"reply":"your response","analysisUpdated":true,"updatedAnalysis":"full updated analysis text"}\n';
+      query += 'OR if no analysis update is needed:\n';
+      query += '{"reply":"your response","analysisUpdated":false,"updatedAnalysis":null}';
 
-      const assistantMessage = await invokeAgent(query, `doc-chat-${fileId}-${documentId}`);
+      const rawResponse = await invokeAgent(query, `doc-chat-${fileId}-${documentId}`);
+      const parsed = parseBedrockChatResponse(rawResponse);
+      const assistantMessage = parsed.reply || rawResponse;
+
+      // Persist analysis update if the AI incorporated new information
+      if (parsed.analysisUpdated && parsed.updatedAnalysis) {
+        const analysisS3Key = resolveAnalysisS3Key(fileId, documentId, document);
+        await putTextToS3(EXTRACTED_TEXT_BUCKET, analysisS3Key, parsed.updatedAnalysis);
+        const analysisPreview = parsed.updatedAnalysis.length > ANALYSIS_PREVIEW_CHARS
+          ? `${parsed.updatedAnalysis.slice(0, ANALYSIS_PREVIEW_CHARS)}…`
+          : parsed.updatedAnalysis;
+        await Document.update(fileId, documentId, {
+          analysis: analysisPreview,
+          analysisS3Key,
+          analysisS3UpdatedAt: new Date().toISOString(),
+          analyzedAt: new Date().toISOString(),
+        });
+      }
 
       const updatedHistory = [
         ...conversationHistory,
@@ -236,7 +292,14 @@ const documentController = {
 
       await saveConversationHistory(fileId, documentId, document, updatedHistory);
 
-      res.json({ documentId, userMessage: message, assistantMessage, conversationHistory: updatedHistory });
+      res.json({
+        documentId,
+        userMessage: message,
+        assistantMessage,
+        analysisUpdated: parsed.analysisUpdated || false,
+        updatedAnalysis: parsed.analysisUpdated ? parsed.updatedAnalysis : null,
+        conversationHistory: updatedHistory,
+      });
     } catch (error) {
       console.error('Chat about document error:', error);
       res.status(500).json({ error: 'Failed to chat about document', details: error.message });

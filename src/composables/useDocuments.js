@@ -140,12 +140,16 @@ export function useDocuments() {
       const data = await api.post(`/file-numbers/${fileId}/documents/${documentId}/chat`, {
         message,
       });
-      // Update the document with conversation history
+      // Update the document with conversation history and analysis (if AI updated it)
       const index = documents.value.findIndex(doc => doc.documentId === documentId);
       if (index >= 0) {
         documents.value[index] = {
           ...documents.value[index],
           conversationHistory: data.conversationHistory,
+          ...(data.analysisUpdated && {
+            analysis: data.updatedAnalysis,
+            analyzedAt: new Date().toISOString(),
+          }),
         };
       }
       return data;
