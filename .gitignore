@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local AI assistant state / generated artifacts
+.claude/
+
+# Backend build artifacts
+backend/function.zip
