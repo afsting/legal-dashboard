@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const { dynamodb } = require('../config/aws');
+const { PutCommand, GetCommand, ScanCommand, UpdateCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 
 const CLIENTS_TABLE = process.env.DYNAMODB_TABLE_CLIENTS || 'clients';
 
@@ -18,58 +19,58 @@ class Client {
       updatedAt: new Date().toISOString(),
     };
 
-    await dynamodb.put({
+    await dynamodb.send(new PutCommand({
       TableName: CLIENTS_TABLE,
       Item: item,
-    }).promise();
+    }));
 
     return item;
   }
 
   static async getById(clientId) {
-    const result = await dynamodb.get({
+    const result = await dynamodb.send(new GetCommand({
       TableName: CLIENTS_TABLE,
       Key: { clientId },
-    }).promise();
+    }));
 
     return result.Item || null;
   }
 
   static async getAll() {
-    const result = await dynamodb.scan({
+    const result = await dynamodb.send(new ScanCommand({
       TableName: CLIENTS_TABLE,
-    }).promise();
+    }));
 
     return result.Items || [];
   }
 
   static async update(clientId, updates) {
     const updateData = { ...updates, updatedAt: new Date().toISOString() };
-    
+
     const updateExpression = Object.keys(updateData)
       .map(key => `${key} = :${key}`)
       .join(', ');
-    
+
     const expressionAttributeValues = {};
     Object.keys(updateData).forEach(key => {
       expressionAttributeValues[`:${key}`] = updateData[key];
     });
 
-    await dynamodb.update({
+    await dynamodb.send(new UpdateCommand({
       TableName: CLIENTS_TABLE,
       Key: { clientId },
       UpdateExpression: `SET ${updateExpression}`,
       ExpressionAttributeValues: expressionAttributeValues,
-    }).promise();
+    }));
 
     return await this.getById(clientId);
   }
 
   static async delete(clientId) {
-    await dynamodb.delete({
+    await dynamodb.send(new DeleteCommand({
       TableName: CLIENTS_TABLE,
       Key: { clientId },
-    }).promise();
+    }));
   }
 }
 

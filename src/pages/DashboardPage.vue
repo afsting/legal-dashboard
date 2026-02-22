@@ -1,20 +1,9 @@
 <template>
   <div class="dashboard">
-    <header class="navbar">
-      <h1>Legal Dashboard</h1>
-      <div class="user-menu">
-        <router-link v-if="currentUser?.role === 'admin'" :to="{ name: 'AdminUsers' }" class="btn-admin">
-          Admin
-        </router-link>
-        <router-link :to="{ name: 'Settings' }" class="btn-settings">Settings</router-link>
-        <button @click="handleLogout" class="btn-logout">Logout</button>
-      </div>
-    </header>
-
     <main class="content">
       <div class="welcome-banner">
-        <h2>Welcome to Your Legal Dashboard</h2>
-        <p>Manage your clients, cases, and documents all in one place</p>
+        <h2>Welcome back</h2>
+        <p>Manage clients, cases, and documents from one workspace</p>
       </div>
 
       <div class="dashboard-grid">
@@ -27,7 +16,7 @@
           </div>
         </router-link>
 
-        <router-link v-if="currentUser?.role === 'admin'" :to="{ name: 'AdminUsers' }" class="dashboard-card admin-card">
+        <router-link v-if="isAdmin" :to="{ name: 'AdminUsers' }" class="dashboard-card admin-card">
           <div class="card-icon">👤</div>
           <h3>User Management</h3>
           <p>Approve and manage user accounts</p>
@@ -68,16 +57,7 @@
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
-import { useAuth } from '../stores/authStore'
-
-const router = useRouter()
-const { logout, currentUser } = useAuth()
-
-const handleLogout = () => {
-  logout()
-  router.replace({ name: 'Login' })
-}
+defineProps(['isAdmin'])
 </script>
 
 <style scoped>
@@ -86,74 +66,6 @@ const handleLogout = () => {
   background: #f5f5f5;
 }
 
-.navbar {
-  background: white;
-  padding: 1rem 2rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.navbar h1 {
-  margin: 0;
-  color: #333;
-  font-size: 24px;
-}
-
-.user-menu {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.btn-settings {
-  padding: 0.5rem 1rem;
-  background: #28a745;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  text-decoration: none;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-}
-
-.btn-settings:hover {
-  background: #218838;
-}
-
-.btn-logout {
-  padding: 0.5rem 1rem;
-  background: #dc3545;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-}
-
-.btn-logout:hover {
-  background: #c82333;
-}
-
-.btn-admin {
-  padding: 0.5rem 1rem;
-  background: #6610f2;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-  text-decoration: none;
-  margin-right: 0.5rem;
-}
-
-.btn-admin:hover {
-  background: #520dc2;
-}
 
 .content {
   padding: 2rem;

@@ -1,14 +1,5 @@
 <template>
   <div class="clients-page">
-    <div class="navbar">
-      <h1>Legal Dashboard</h1>
-      <div class="user-menu">
-        <router-link :to="{ name: 'Dashboard' }" class="btn-back">← Dashboard</router-link>
-        <router-link :to="{ name: 'Settings' }" class="btn-settings">Settings</router-link>
-        <button @click="handleLogout" class="btn-logout">Logout</button>
-      </div>
-    </div>
-
     <main class="content">
       <div class="page-header">
         <h2>Clients</h2>
@@ -48,7 +39,16 @@
             <div class="col-actions">Actions</div>
           </div>
 
-          <div v-for="client in filteredClients" :key="client.clientId" class="list-row">
+          <div
+            v-for="client in filteredClients"
+            :key="client.clientId"
+            class="list-row"
+            role="button"
+            tabindex="0"
+            @click="goToClient(client.clientId)"
+            @keydown.enter="goToClient(client.clientId)"
+            @keydown.space.prevent="goToClient(client.clientId)"
+          >
             <div class="col-name">
               <strong>{{ client.name }}</strong>
             </div>
@@ -69,8 +69,7 @@
               {{ formatDate(client.createdAt) }}
             </div>
             <div class="col-actions">
-              <button @click="goToClient(client.clientId)" class="btn-view">View Details</button>
-              <button @click="handleDelete(client.clientId)" class="btn-delete">Delete</button>
+              <button @click.stop="handleDelete(client.clientId)" class="btn-delete">Delete</button>
             </div>
           </div>
         </div>
@@ -137,11 +136,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuth } from '../stores/authStore'
 import { useClients } from '../composables/useClients'
 
 const router = useRouter()
-const { logout } = useAuth()
 const { clients, loading, error, fetchClients, createClient, deleteClient } = useClients()
 
 const showAddClient = ref(false)
@@ -186,11 +183,6 @@ const filteredClients = computed(() => {
   return sorted
 })
 
-const handleLogout = () => {
-  logout()
-  router.replace({ name: 'Login' })
-}
-
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString()
 }
@@ -228,74 +220,6 @@ onMounted(() => {
 .clients-page {
   min-height: 100vh;
   background: #f5f5f5;
-}
-
-.navbar {
-  background: white;
-  padding: 1rem 2rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.navbar h1 {
-  margin: 0;
-  color: #333;
-  font-size: 24px;
-}
-
-.user-menu {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.btn-back {
-  padding: 0.5rem 1rem;
-  background: #6c757d;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  text-decoration: none;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-}
-
-.btn-back:hover {
-  background: #5a6268;
-}
-
-.btn-settings {
-  padding: 0.5rem 1rem;
-  background: #28a745;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  text-decoration: none;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-}
-
-.btn-settings:hover {
-  background: #218838;
-}
-
-.btn-logout {
-  padding: 0.5rem 1rem;
-  background: #dc3545;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background 0.2s;
-}
-
-.btn-logout:hover {
-  background: #c82333;
 }
 
 .content {
@@ -425,11 +349,13 @@ onMounted(() => {
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid #f0f0f0;
   align-items: center;
-  transition: background 0.2s;
+  transition: background 0.2s, box-shadow 0.2s;
+  cursor: pointer;
 }
 
 .list-row:hover {
   background: #f8f9ff;
+  box-shadow: inset 4px 0 0 #667eea;
 }
 
 .list-row:last-child {
@@ -476,22 +402,6 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
-.btn-view {
-  padding: 0.5rem 1rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.btn-view:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-}
 
 .btn-delete {
   padding: 0.5rem 1rem;

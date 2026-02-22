@@ -101,6 +101,60 @@ export function useDocuments() {
     }
   };
 
+  const analyzeDocument = async ({ fileId, documentId }) => {
+    loading.value = true;
+    error.value = null;
+    try {
+      const data = await api.post(`/file-numbers/${fileId}/documents/${documentId}/analyze`);
+      // Update the document in the list with analysis data
+      const index = documents.value.findIndex(doc => doc.documentId === documentId);
+      if (index >= 0) {
+        documents.value[index] = {
+          ...documents.value[index],
+          analysis: data.analysis,
+          analyzedAt: data.analyzedAt,
+        };
+      }
+      return data;
+    } catch (err) {
+      error.value = err.message;
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  const fetchConversationHistory = async ({ fileId, documentId }) => {
+    try {
+      const data = await api.get(`/file-numbers/${fileId}/documents/${documentId}/conversation`);
+      return data.conversationHistory || [];
+    } catch (err) {
+      error.value = err.message;
+      throw err;
+    }
+  };
+
+  const chatAboutDocument = async ({ fileId, documentId, message }) => {
+    error.value = null;
+    try {
+      const data = await api.post(`/file-numbers/${fileId}/documents/${documentId}/chat`, {
+        message,
+      });
+      // Update the document with conversation history
+      const index = documents.value.findIndex(doc => doc.documentId === documentId);
+      if (index >= 0) {
+        documents.value[index] = {
+          ...documents.value[index],
+          conversationHistory: data.conversationHistory,
+        };
+      }
+      return data;
+    } catch (err) {
+      error.value = err.message;
+      throw err;
+    }
+  };
+
   return {
     documents,
     versions,
@@ -110,5 +164,8 @@ export function useDocuments() {
     uploadDocument,
     fetchDocumentVersions,
     deleteDocument,
+    analyzeDocument,
+    fetchConversationHistory,
+    chatAboutDocument,
   };
 }

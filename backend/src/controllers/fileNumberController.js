@@ -3,7 +3,7 @@ const FileNumber = require('../models/FileNumber');
 const fileNumberController = {
   async create(req, res) {
     try {
-      const { packageId, clientId, fileNumber, description, status } = req.body;
+      const { packageId, clientId, fileNumber, description, status, fileType } = req.body;
 
       if ((!packageId && !clientId) || !fileNumber) {
         return res.status(400).json({ error: 'PackageId or clientId, and fileNumber are required' });
@@ -14,6 +14,7 @@ const fileNumberController = {
         clientId: clientId || null,
         fileNumber,
         description,
+        fileType,
         status,
       });
 

@@ -1,139 +1,124 @@
-<!-- Persistent instructions for continuing work on Demand Developer -->
+# Copilot Instructions — Legal Dashboard
 
 ## Project Summary
-**Name**: Penny Page Demand Development Application
-**Goal**: Client-centric workflow and package editor for managing demand packages at law firms
-**Architecture**: Client → File Numbers (court cases) → Functions (Demand Packages, Document Management)
-**Status**: Phase 2 complete (core architecture and UI finished)
+**Name**: Legal Dashboard (internal codename: Penny Page)
+**Goal**: Legal case management system for law firms — clients → file numbers (cases) → documents → demand packages
+**Status**: Active development; AI agent integration is a primary focus area
+**Live URL**: https://d1a0t4zzh748tj.cloudfront.net
+**API**: https://ozzx2wkqy1.execute-api.us-east-1.amazonaws.com/prod/
 
 ## Tech Stack
-- **Frontend**: Vue 3 (Composition API, `<script setup>`, dynamic imports)
-- **Build**: Vite 7.2.5 with Rolldown (experimental)
-- **Router**: Vue Router with protected routes
-- **Auth**: Google OAuth 2.0 with JWT validation
-- **State**: Composable-based stores (authStore, clientStore, packageStore)
-- **Styling**: Custom CSS (no frameworks)
-- **Deployment**: AWS (future)
+- **Frontend**: Vue 3 (Composition API, `<script setup>`), Vite 7, Vue Router, Pinia
+- **Auth**: AWS Cognito with Google OAuth via AWS Amplify UI (`@aws-amplify/ui-vue`)
+- **Backend**: Node.js/Express, wrapped with `serverless-http` for AWS Lambda
+- **Database**: AWS DynamoDB (multi-table, PAY_PER_REQUEST billing)
+- **Storage**: AWS S3 — two buckets: documents + extracted text/analysis
+- **AI**: AWS Bedrock agent (streaming InvokeAgent API, AWS SDK v3)
+- **OCR**: AWS Textract (async, S3-sourced jobs)
+- **Infrastructure**: AWS CDK v2 (TypeScript)
+- **Local dev**: LocalStack via Docker Compose
 
-## Current Architecture
-
-### Store Structure
+## Project Structure
 ```
-authStore.js
-├── currentUser (email, authenticated status)
-├── loginWithGoogle(credentials)
-├── logout()
-└── isAuthenticated (reactive)
-
-clientStore.js
-├── clients (array of {id, name, email, phone, fileNumbers})
-├── addClient(data)
-├── addFileNumber(clientId, data)
-├── getFileNumberById(clientId, fileNumberId)
-└── getClientById(clientId)
-
-packageStore.js
-├── packages (array linked to clientId, fileNumberId)
-├── addPackage(clientId, fileNumberId, data) → creates with status='draft'
-├── getPackagesByFileNumber(clientId, fileNumberId)
-├── getPackageById(id)
-├── updatePackageStatus(id, status)
-├── addDocument(packageId, category, name)
-├── removeDocument(packageId, category, index)
-└── deletePackage(id)
+/
+├── src/                          # Vue 3 frontend
+│   ├── pages/                    # Route-level components
+│   ├── components/               # Shared components (AgentSidebar, etc.)
+│   ├── composables/              # Data-fetching hooks (useClients, useDocuments, etc.)
+│   ├── stores/                   # Pinia stores (authStore)
+│   ├── utils/api.js              # HTTP client with Cognito token management
+│   ├── App.vue                   # Root layout, auth wrapper, header
+│   └── router.js                 # 13 routes with auth guards
+├── backend/
+│   ├── src/
+│   │   ├── app.js                # Express app setup
+│   │   ├── lambda.js             # Lambda handler wrapper
+│   │   ├── controllers/          # Request handlers
+│   │   ├── models/               # DynamoDB data access
+│   │   ├── routes/               # Express route definitions
+│   │   ├── middleware/auth.js    # JWT/Cognito verification
+│   │   └── config/aws.js         # DynamoDB/S3 client init
+│   └── scripts/
+│       ├── update-agent-instructions.js  # Deploy Bedrock agent prompt
+│       ├── init-localstack.js            # Create local tables/buckets
+│       └── make-admin.js                 # Approve admin users
+├── infrastructure/
+│   └── lib/legal-dashboard-stack.ts  # CDK stack (all AWS resources)
+└── CLAUDE.md                     # Claude Code AI assistant instructions
 ```
 
-### Route Structure
+## Data Model & Relationships
 ```
-/login                                          → LoginPage (Google OAuth)
-/                                               → ClientsListPage (search/filter)
-/client/:clientId                               → ClientDetailPage (file numbers)
-/client/:clientId/file/:fileNumberId            → FileNumberDetailPage (functions)
-/client/:clientId/file/:fileNumberId/packages   → DemandPackagesPage (package list)
-/client/:clientId/file/:fileNumberId/packages/create → PackageCreatePage (contextual)
-/package/create                                 → PackageCreatePage (standalone)
+Client (clientId PK)
+  └─ FileNumber (fileId PK, clientId GSI)
+       └─ Document (fileId PK + documentId SK)
+       └─ Package (packageId PK, fileNumberIdIndex GSI)
+            └─ Workflow (workflowId PK, packageId GSI)
+```
+
+### DynamoDB Tables
+| Table | PK | SK | GSIs |
+|---|---|---|---|
+| clients | clientId | — | userIdIndex |
+| file-numbers | fileId | — | clientIdIndex, packageIdIndex |
+| documents | fileId | documentId | — |
+| packages | packageId | — | clientIdIndex, fileNumberIdIndex |
+| workflows | workflowId | — | packageIdIndex |
+
+## Key Architectural Decisions
+
+### S3 Naming Convention
+All S3 keys use a consistent hierarchy. **Always follow this pattern — never construct paths inline:**
+```
+clients/{clientId}/file-numbers/{fileNumber}/docs/{fileName}
+clients/{clientId}/file-numbers/{fileNumber}/extracted-text/{documentId}.txt.gz
+clients/{clientId}/file-numbers/{fileNumber}/analysis/{documentId}.txt.gz
+```
+Use `clientId` (UUID) and `fileNumber` (human-readable string, e.g. "2024-001"), not internal IDs alone.
+Always use the dedicated key-builder functions: `buildExtractedTextS3Key()` and `buildAnalysisS3Key()`.
+
+### DynamoDB 400KB Item Limit
+Large text content must never be stored directly in DynamoDB:
+- Extracted document text → S3 (`extractedTextS3Key`), gzipped
+- Full AI analysis → S3 (`analysisS3Key`), gzipped
+- AI analysis preview → DynamoDB `analysis` field, capped at 500 characters
+- Store S3 key references in DynamoDB; fetch content on demand
+
+### Document Upload Flow (Presigned URLs)
+Direct S3 upload bypasses Lambda/API Gateway size limits:
+1. `POST /file-numbers/:fileId/documents/presigned-url` → get signed PUT URL
+2. Client PUTs directly to S3
+3. `POST /file-numbers/:fileId/documents/confirm` → create DynamoDB record
+
+### Soft Deletes
+Documents are never hard-deleted. `deletedAt` + `deletedBy` mark deletion; S3 versions are preserved.
+
+## AI / Agent Integration
+- Agent configured via env vars: `BEDROCK_AGENT_ID`, `BEDROCK_AGENT_ALIAS_ID`
+- Agent queries include current client/file number context (injected by `agentController.js`)
+- Document analysis: Textract extracts text → stored in S3 → Bedrock invoked asynchronously
+- Agent instructions managed via `backend/scripts/update-agent-instructions.js`
+- **Prompt/instruction development is a primary focus** — treat agent instructions as versioned config
+
+## Route Structure
+```
+/                                               → ClientsListPage
+/client/:clientId                               → ClientDetailPage
+/client/:clientId/file/:fileNumberId            → FileNumberDetailPage
+/client/:clientId/file/:fileNumberId/packages   → DemandPackagesPage
+/client/:clientId/file/:fileNumberId/packages/create → PackageCreatePage
 /package/:id                                    → PackageDetailPage
-/package/:id/workflow                           → WorkflowPage (checklist)
-/settings                                       → SettingsPage (email allowlist)
+/package/:id/workflow                           → WorkflowPage
+/admin/users                                    → AdminUsersPage
+/settings                                       → SettingsPage
 ```
 
-### Key Data Models
-```
-Client: {id, name, email, phone, fileNumbers: [], createdAt}
-FileNumber: {id, number, description, court, createdAt}
-Package: {id, name, description, recipient, clientId, fileNumberId, status, documents, createdAt}
-Documents: {medicalRecords: [], accidentReports: [], photographs: []}
-```
-
-## Current Pages (All Complete)
-- LoginPage.vue - Google Sign-In button
-- ClientsListPage.vue - Detailed list with search/filter
-- ClientDetailPage.vue - File number management with modal
-- FileNumberDetailPage.vue - Function selection cards
-- DemandPackagesPage.vue - Package list + inline create modal
-- PackageCreatePage.vue - Form supporting contextual params
-- PackageDetailPage.vue - Package overview with navigation
-- WorkflowPage.vue - Document checklist (3 categories, medical records required)
-- SettingsPage.vue - Email allowlist management
-
-## Implementation Details
-
-### Search & Filter (ClientsListPage)
-- Real-time search across name, email, phone
-- Sort by: name (asc/desc), date (newest/oldest), file count (most/least)
-- Detailed table layout with contact icons
-
-### Document Checklist
-- Medical Records: Required (validation enforced)
-- Accident Reports: Optional
-- Photographs: Optional
-- Add/remove per category
-- Status tracking: draft, in-progress, completed
-
-### Navigation Patterns
-- All pages have proper back buttons
-- Breadcrumb-style navigation through hierarchy
-- Modal-based forms for inline creation
-- Route params preserve context (clientId, fileNumberId)
-
-## Environment Variables (.env.local)
-```
-VITE_GOOGLE_CLIENT_ID=838312409122-qtg66a94m2j6na3gfakcvmg0cla69n3g.apps.googleusercontent.com
-VITE_ALLOWED_EMAILS=usafsting@gmail.com
-```
-
-## Development Server
-- Running: `npm run dev`
-- URL: `http://localhost:5173/`
-- HMR: Enabled via Vite
-- No external build issues
-
-## Next Phase (Phase 3 - Planned)
-1. **Document Management Function**: File upload/organization within file numbers
-2. **Motion Management**: Separate function for tracking motions
-3. **Settlement Tracking**: Case settlement monitoring
-4. **AWS Integration**: S3 document storage, Lambda backend
-5. **AI Features**: Smart suggestions and automation
-
-## Known Limitations & Future Work
-- DashboardPage.vue exists but router points to ClientsListPage
-- Document Management shows "Coming Soon" (not yet implemented)
-- Google OAuth origin must be registered in Google Console
-- No document file uploads yet (text-based checklist only)
-- No backend API integration (localStorage only)
-
-## Code Standards
-- Vue 3 Composition API with `<script setup>`
-- Reactive refs and computed properties
-- Dynamic route imports for code splitting
-- Proper error handling and validation
-- Semantic HTML with accessibility
-- Custom CSS with gradient themes
-- localStorage for persistence
+## Known Technical Debt
+- AWS SDK v2 still used in most controllers/models (v3 only for Bedrock + Textract)
+- `conversationHistory` still stored in DynamoDB (needs S3 migration like extracted text)
+- Legacy JWT auth system still present alongside Cognito; Cognito should be the only auth path
 
 ## Coding Standards & Development Guidelines
-
-Copilot must follow these guidelines to maintain clean, consistent, low-slop code throughout this repository.
 
 ### 1. Begin With an Intent Block
 Before generating code, define:
@@ -141,88 +126,36 @@ Before generating code, define:
 - Expected inputs and outputs
 - Constraints or edge cases
 
-If no intent exists, request one before proceeding.
-
 ### 2. Define Data Shapes Before Implementing Logic
-Generate these first:
-- Interfaces (via JSDoc or TypeScript)
-- Types
-- Enums
-- Schemas
-
-This ensures predictable structure and reduces improvisation.
+Generate these first: JSDoc types, schemas, enums. This ensures predictable structure.
 
 ### 3. Produce Small, Single-Responsibility Functions
 Break tasks into clear steps using comments:
 ```javascript
-// Step 1: Parse input
-// Step 2: Validate
-// Step 3: Transform
-// Step 4: Persist
+// Step 1: Validate input
+// Step 2: Fetch from DynamoDB
+// Step 3: Load large content from S3
+// Step 4: Return response
 ```
-Each step should map to a focused, testable function.
 
 ### 4. Prefer Refactoring Over Extending
-When modifying existing code:
-- Rewrite for clarity
-- Remove duplication
-- Improve safety
-- Simplify logic
-
+When modifying existing code: rewrite for clarity, remove duplication, simplify logic.
 **Do not extend messy or unclear code.**
 
-### 5. Treat First Drafts as Scaffolding
-Expected workflow:
-1. Generate
-2. Review
-3. Regenerate with constraints
-4. Finalize
+### 5. Follow Existing Patterns
+- Vue: Composition API with `<script setup>`, reactive refs, composables for data fetching
+- Backend: Express controllers returning JSON, consistent error shapes
+- Error handling: `try/catch` with specific messages; 400 for bad input, 404 for not found, 503 for unavailable
+- Logging: `console.error` for errors, `console.log` for debug
 
-Initial output is not considered final.
+### 6. S3 Key Rule
+Never construct S3 keys as inline strings. Always use the key-builder functions.
 
-### 6. Provide Clear Explanations When Asked
-Be able to explain:
-- What a function does
-- Missing edge cases
-- Potential failure modes
-
-If the explanation is unclear, refactor the code.
-
-### 7. Follow Repository Style Rules
-Adhere to:
-- ESLint configuration (if exists)
-- Prettier formatting (if configured)
-- Established naming conventions
-- Existing code patterns
-
-Generated code must not violate these rules.
+### 7. DynamoDB Size Rule
+Never store large text blobs in DynamoDB. Extracted text and AI analysis go to S3; only metadata and short previews stay in DynamoDB.
 
 ### 8. Treat TODO Comments as Authoritative
-When TODOs are present, implement them directly:
-```javascript
-// TODO: sanitize input
-// TODO: handle missing user
-// TODO: log errors
-```
-
-### 9. Support a Test-First Workflow
-When appropriate, generate tests before implementation:
-- Unit tests
-- Integration tests
-- Edge-case tests
-
-Tests define the contract and reduce slop.
-
-### 10. Follow Existing Project Patterns
-Match established patterns in this repository:
-- Vue patterns (Composition API, reactive/ref usage, onMounted lifecycle)
-- Error handling (try/catch with specific error messages)
-- Logging (console.error for errors, console.log for debug)
-- API structure (JSON responses, consistent error handling)
-- CSS patterns (custom CSS, gradient themes, consistent spacing)
-- Router patterns (dynamic route imports, protected routes via meta guards)
-
-**Consistency is prioritized over novelty.**
+When TODOs are present, implement them directly.
 
 ### Summary
 Prioritize:
@@ -233,13 +166,38 @@ Prioritize:
 - Adherence to intent
 - Refactoring over extension
 
-These rules ensure fast development without accumulating sloppy or inconsistent code.
+## Environment Variables
+```
+# Backend
+NODE_ENV=development|production
+JWT_SECRET=...
+AWS_REGION=us-east-1
+DYNAMODB_TABLE_CLIENTS=clients
+DYNAMODB_TABLE_FILE_NUMBERS=file-numbers
+DYNAMODB_TABLE_DOCUMENTS=documents
+DYNAMODB_TABLE_PACKAGES=packages
+DYNAMODB_TABLE_WORKFLOWS=workflows
+S3_BUCKET_DOCUMENTS=legal-documents
+S3_BUCKET_EXTRACTED_TEXT=legal-extracted-text
+BEDROCK_AGENT_ID=...
+BEDROCK_AGENT_ALIAS_ID=...
+CORS_ORIGIN=https://d1a0t4zzh748tj.cloudfront.net
 
-## Important Notes for Next Session
-- Always run from: `C:\Users\af_st\git\demand_developer`
-- Dev server: `npm run dev` (background task available)
-- All stores use reactive refs and computed properties
-- Package status values: 'draft', 'in-progress', 'completed'
-- File numbers tied to clients; packages tied to file numbers
-- Search/filter only on ClientsListPage - other pages use direct navigation
-- Modals use v-if with overlay pattern
+# Frontend
+VITE_API_URL=http://localhost:5000/api
+```
+
+## Local Development
+```bash
+# Start LocalStack
+docker-compose up -d
+
+# Init tables and buckets
+cd backend && npm run init-localstack
+
+# Backend (port 5000)
+cd backend && npm run dev
+
+# Frontend (port 5173)
+npm run dev
+```

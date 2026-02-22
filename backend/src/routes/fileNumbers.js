@@ -41,6 +41,18 @@ router.get('/:fileId/documents', documentController.listByFileId);
 // List versions for a document
 router.get('/:fileId/documents/:documentId/versions', documentController.listVersions);
 
+// Analyze a document with Bedrock agent
+router.post('/:fileId/documents/:documentId/analyze', documentController.analyzeDocument);
+
+// Chat about a document with Bedrock agent
+router.post('/:fileId/documents/:documentId/chat', documentController.chatAboutDocument);
+
+// Get conversation history for a document (loaded from S3)
+router.get('/:fileId/documents/:documentId/conversation', documentController.getConversationHistory);
+
+// Get presigned URL for downloading a document
+router.post('/:fileId/documents/:documentId/presigned-url', documentController.getPresignedDownloadUrl);
+
 // Soft delete a document
 router.delete('/:fileId/documents/:documentId', documentController.softDelete);
 

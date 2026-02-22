@@ -1,10 +1,17 @@
 const express = require('express');
 const { adminMiddleware } = require('../middleware/auth');
-const AWS = require('aws-sdk');
-const cognito = new AWS.CognitoIdentityServiceProvider();
+const {
+  CognitoIdentityProviderClient,
+  ListUsersCommand,
+  AdminListGroupsForUserCommand,
+  AdminDeleteUserCommand,
+  AdminAddUserToGroupCommand,
+  AdminRemoveUserFromGroupCommand,
+} = require('@aws-sdk/client-cognito-identity-provider');
 
 const router = express.Router();
 const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || 'us-east-1_hPpfv1YSS';
+const cognito = new CognitoIdentityProviderClient({ region: 'us-east-1' });
 
 const getUserAttributes = (user) => {
   const attributes = {};
@@ -15,10 +22,10 @@ const getUserAttributes = (user) => {
 };
 
 const getUserGroups = async (username) => {
-  const result = await cognito.adminListGroupsForUser({
+  const result = await cognito.send(new AdminListGroupsForUserCommand({
     UserPoolId: USER_POOL_ID,
     Username: username,
-  }).promise();
+  }));
 
   return result.Groups?.map(group => group.GroupName) || [];
 };
@@ -43,7 +50,7 @@ router.get('/admin/users', adminMiddleware, async (req, res) => {
         params.PaginationToken = paginationToken;
       }
 
-      const result = await cognito.listUsers(params).promise();
+      const result = await cognito.send(new ListUsersCommand(params));
 
       const users = await Promise.all(result.Users.map(async (user) => {
         const attributes = getUserAttributes(user);
@@ -91,7 +98,7 @@ router.get('/admin/pending-users', adminMiddleware, async (req, res) => {
         params.PaginationToken = paginationToken;
       }
 
-      const result = await cognito.listUsers(params).promise();
+      const result = await cognito.send(new ListUsersCommand(params));
 
       const pending = (await Promise.all(result.Users.map(async (user) => {
         const attributes = getUserAttributes(user);
@@ -126,11 +133,10 @@ router.delete('/admin/users/:userId', adminMiddleware, async (req, res) => {
   try {
     const { userId } = req.params;
 
-    // Delete user
-    await cognito.adminDeleteUser({
+    await cognito.send(new AdminDeleteUserCommand({
       UserPoolId: USER_POOL_ID,
       Username: userId
-    }).promise();
+    }));
 
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
@@ -148,17 +154,17 @@ router.post('/admin/users/:userId/groups/:groupName', adminMiddleware, async (re
       return res.status(400).json({ error: 'Invalid group. Must be "admin" or "user"' });
     }
 
-    // Add user to group
-    await cognito.adminAddUserToGroup({
+    await cognito.send(new AdminAddUserToGroupCommand({
       UserPoolId: USER_POOL_ID,
       Username: userId,
       GroupName: groupName
-    }).promise();
+    }));
 
     res.json({ message: `User added to ${groupName} group successfully` });
   } catch (error) {
     console.error('Add user to group error:', error);
-    if (error.code === 'UserNotFoundException') {
+    // In SDK v3 error codes are on error.name instead of error.code
+    if (error.name === 'UserNotFoundException') {
       res.status(404).json({ error: 'User not found in Cognito' });
     } else {
       res.status(500).json({ error: 'Failed to add user to group' });
@@ -175,17 +181,17 @@ router.delete('/admin/users/:userId/groups/:groupName', adminMiddleware, async (
       return res.status(400).json({ error: 'Invalid group. Must be "admin" or "user"' });
     }
 
-    // Remove user from group
-    await cognito.adminRemoveUserFromGroup({
+    await cognito.send(new AdminRemoveUserFromGroupCommand({
       UserPoolId: USER_POOL_ID,
       Username: userId,
       GroupName: groupName
-    }).promise();
+    }));
 
     res.json({ message: `User removed from ${groupName} group successfully` });
   } catch (error) {
     console.error('Remove user from group error:', error);
-    if (error.code === 'UserNotFoundException') {
+    // In SDK v3 error codes are on error.name instead of error.code
+    if (error.name === 'UserNotFoundException') {
       res.status(404).json({ error: 'User not found in Cognito' });
     } else {
       res.status(500).json({ error: 'Failed to remove user from group' });

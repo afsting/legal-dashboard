@@ -102,10 +102,17 @@ const canAccessDashboard = (user) => {
               <nav class="main-nav">
                 <button 
                   class="nav-link" 
-                  :class="{ active: route.path === '/' }"
-                  @click="$router.push('/')"
+                  :class="{ active: route.path === '/dashboard' || route.path === '/' }"
+                  @click="$router.push('/dashboard')"
                 >
                   Dashboard
+                </button>
+                <button
+                  class="nav-link"
+                  :class="{ active: route.path.startsWith('/clients') }"
+                  @click="$router.push('/clients')"
+                >
+                  Clients
                 </button>
                 <button 
                   v-if="groupsLoaded && checkIsAdmin(user)"

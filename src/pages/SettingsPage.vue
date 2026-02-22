@@ -43,9 +43,7 @@
         <section class="settings-section">
           <h2>Current User</h2>
           <div class="user-info">
-            <p><strong>Name:</strong> {{ currentUser.name }}</p>
-            <p><strong>Email:</strong> {{ currentUser.email }}</p>
-            <p><strong>Logged in:</strong> {{ formatDate(currentUser.loginTime) }}</p>
+            <p><strong>Email:</strong> {{ user?.signInDetails?.loginId || user?.username }}</p>
           </div>
         </section>
       </div>
@@ -56,10 +54,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuth } from '../stores/authStore'
 
+defineProps(['user'])
 const router = useRouter()
-const { currentUser, initializeAuth } = useAuth()
 
 const allowedEmails = ref([])
 const newEmail = ref('')
@@ -126,7 +123,6 @@ const isValidEmail = (email) => {
 }
 
 onMounted(() => {
-  initializeAuth()
   loadAllowedEmails()
 })
 </script>

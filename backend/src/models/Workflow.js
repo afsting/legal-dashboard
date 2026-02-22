@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const { dynamodb } = require('../config/aws');
+const { PutCommand, GetCommand, QueryCommand, UpdateCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 
 const WORKFLOWS_TABLE = process.env.DYNAMODB_TABLE_WORKFLOWS || 'workflows';
 
@@ -18,63 +19,63 @@ class Workflow {
       updatedAt: new Date().toISOString(),
     };
 
-    await dynamodb.put({
+    await dynamodb.send(new PutCommand({
       TableName: WORKFLOWS_TABLE,
       Item: item,
-    }).promise();
+    }));
 
     return item;
   }
 
   static async getById(workflowId) {
-    const result = await dynamodb.get({
+    const result = await dynamodb.send(new GetCommand({
       TableName: WORKFLOWS_TABLE,
       Key: { workflowId },
-    }).promise();
+    }));
 
     return result.Item || null;
   }
 
   static async getByPackageId(packageId) {
-    const result = await dynamodb.query({
+    const result = await dynamodb.send(new QueryCommand({
       TableName: WORKFLOWS_TABLE,
       IndexName: 'packageIdIndex',
       KeyConditionExpression: 'packageId = :packageId',
       ExpressionAttributeValues: {
         ':packageId': packageId,
       },
-    }).promise();
+    }));
 
     return result.Items || [];
   }
 
   static async update(workflowId, updates) {
     const updateData = { ...updates, updatedAt: new Date().toISOString() };
-    
+
     const updateExpression = Object.keys(updateData)
       .map(key => `${key} = :${key}`)
       .join(', ');
-    
+
     const expressionAttributeValues = {};
     Object.keys(updateData).forEach(key => {
       expressionAttributeValues[`:${key}`] = updateData[key];
     });
 
-    await dynamodb.update({
+    await dynamodb.send(new UpdateCommand({
       TableName: WORKFLOWS_TABLE,
       Key: { workflowId },
       UpdateExpression: `SET ${updateExpression}`,
       ExpressionAttributeValues: expressionAttributeValues,
-    }).promise();
+    }));
 
     return await this.getById(workflowId);
   }
 
   static async delete(workflowId) {
-    await dynamodb.delete({
+    await dynamodb.send(new DeleteCommand({
       TableName: WORKFLOWS_TABLE,
       Key: { workflowId },
-    }).promise();
+    }));
   }
 }
 

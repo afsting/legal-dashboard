@@ -1,4 +1,6 @@
 const { s3 } = require('../config/aws');
+const { PutObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 
@@ -15,8 +17,8 @@ const uploadController = {
       const { fileName, contentType, clientId, fileNumber } = req.body;
 
       if (!fileName || !contentType || !clientId || !fileNumber) {
-        return res.status(400).json({ 
-          error: 'fileName, contentType, clientId, and fileNumber are required' 
+        return res.status(400).json({
+          error: 'fileName, contentType, clientId, and fileNumber are required'
         });
       }
 
@@ -24,12 +26,15 @@ const uploadController = {
       const s3Key = `clients/${clientId}/file-numbers/${fileNumber}/docs/${safeFileName}`;
 
       // Generate presigned URL that expires in 5 minutes
-      const presignedUrl = await s3.getSignedUrlPromise('putObject', {
-        Bucket: DOCUMENTS_BUCKET,
-        Key: s3Key,
-        ContentType: contentType,
-        Expires: 300, // 5 minutes
-      });
+      const presignedUrl = await getSignedUrl(
+        s3,
+        new PutObjectCommand({
+          Bucket: DOCUMENTS_BUCKET,
+          Key: s3Key,
+          ContentType: contentType,
+        }),
+        { expiresIn: 300 } // 5 minutes
+      );
 
       res.json({
         uploadUrl: presignedUrl,
@@ -49,8 +54,8 @@ const uploadController = {
       const uploadedBy = req.user.userId;
 
       if (!fileName || !contentType || !size || !s3Key || !clientId || !fileNumber) {
-        return res.status(400).json({ 
-          error: 'All fields are required' 
+        return res.status(400).json({
+          error: 'All fields are required'
         });
       }
 
@@ -61,10 +66,10 @@ const uploadController = {
 
       if (existing) {
         // Get the version info from S3
-        const headResult = await s3.headObject({
+        const headResult = await s3.send(new HeadObjectCommand({
           Bucket: DOCUMENTS_BUCKET,
           Key: s3Key,
-        }).promise();
+        }));
 
         const updated = await Document.update(fileId, existing.documentId, {
           contentType,
@@ -89,10 +94,10 @@ const uploadController = {
       });
 
       // Get version ID from S3
-      const headResult = await s3.headObject({
+      const headResult = await s3.send(new HeadObjectCommand({
         Bucket: DOCUMENTS_BUCKET,
         Key: s3Key,
-      }).promise();
+      }));
 
       if (headResult.VersionId) {
         await Document.update(fileId, document.documentId, {

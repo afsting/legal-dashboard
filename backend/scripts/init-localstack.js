@@ -1,26 +1,20 @@
 require('dotenv').config();
-const AWS = require('aws-sdk');
+const { DynamoDBClient, CreateTableCommand } = require('@aws-sdk/client-dynamodb');
+const { S3Client, CreateBucketCommand } = require('@aws-sdk/client-s3');
 
-// Configure AWS to use LocalStack
-AWS.config.update({
+const localStackConfig = {
   region: process.env.AWS_REGION || 'us-east-1',
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
+  },
   endpoint: process.env.AWS_ENDPOINT_URL || 'http://localhost:4566',
-  s3ForcePathStyle: true,
-  sslEnabled: false
-});
+};
 
-const dynamodb = new AWS.DynamoDB();
-const s3 = new AWS.S3();
+const dynamodb = new DynamoDBClient(localStackConfig);
+const s3 = new S3Client({ ...localStackConfig, forcePathStyle: true });
 
 const tables = [
-  {
-    TableName: process.env.DYNAMODB_TABLE_USERS || 'users',
-    KeySchema: [{ AttributeName: 'email', KeyType: 'HASH' }],
-    AttributeDefinitions: [{ AttributeName: 'email', AttributeType: 'S' }],
-    BillingMode: 'PAY_PER_REQUEST'
-  },
   {
     TableName: process.env.DYNAMODB_TABLE_CLIENTS || 'clients',
     KeySchema: [{ AttributeName: 'clientId', KeyType: 'HASH' }],
@@ -73,10 +67,10 @@ const initializeDynamoDB = async () => {
   console.log('Initializing DynamoDB tables...');
   for (const table of tables) {
     try {
-      await dynamodb.createTable(table).promise();
+      await dynamodb.send(new CreateTableCommand(table));
       console.log(`✓ Created table: ${table.TableName}`);
     } catch (error) {
-      if (error.code === 'ResourceInUseException') {
+      if (error.name === 'ResourceInUseException') {
         console.log(`✓ Table already exists: ${table.TableName}`);
       } else {
         console.error(`✗ Error creating table ${table.TableName}:`, error.message);
@@ -88,13 +82,13 @@ const initializeDynamoDB = async () => {
 const initializeS3 = async () => {
   console.log('Initializing S3 buckets...');
   const buckets = [process.env.S3_BUCKET_DOCUMENTS || 'legal-documents'];
-  
+
   for (const bucket of buckets) {
     try {
-      await s3.createBucket({ Bucket: bucket }).promise();
+      await s3.send(new CreateBucketCommand({ Bucket: bucket }));
       console.log(`✓ Created bucket: ${bucket}`);
     } catch (error) {
-      if (error.code === 'BucketAlreadyOwnedByYou') {
+      if (error.name === 'BucketAlreadyOwnedByYou') {
         console.log(`✓ Bucket already exists: ${bucket}`);
       } else {
         console.error(`✗ Error creating bucket ${bucket}:`, error.message);

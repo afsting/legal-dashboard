@@ -18,14 +18,36 @@
         <div class="client-header">
           <div>
             <h2>{{ client.name }}</h2>
-            <p class="client-subtitle">{{ client.email }}</p>
-            <p class="client-subtitle">{{ client.phone }}</p>
           </div>
           <button @click="showAddFileNumber = true" class="btn-primary">+ New File Number</button>
         </div>
 
+        <div class="client-details">
+          <div class="details-card">
+            <h3>Client Details</h3>
+            <div class="details-grid">
+              <div class="detail-item">
+                <span class="detail-label">Phone</span>
+                <span class="detail-value">{{ client.phone || 'Not provided' }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Email</span>
+                <span class="detail-value">{{ client.email || 'Not provided' }}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Address</span>
+                <span class="detail-value">{{ client.address || 'No address on file' }}</span>
+              </div>
+            </div>
+            <div class="detail-notes">
+              <span class="detail-label">Notes</span>
+              <p class="detail-notes-body">{{ client.notes || 'No notes yet.' }}</p>
+            </div>
+          </div>
+        </div>
+
         <div class="file-numbers-section">
-          <h3>File Numbers (Court Cases)</h3>
+          <h3>File Numbers</h3>
           
           <div v-if="!fileNumbers || fileNumbers.length === 0" class="empty-state">
             <p>No file numbers yet. Add a file number to get started.</p>
@@ -34,15 +56,27 @@
           <div v-else class="file-numbers-list">
             <div class="list-header">
               <div class="col-number">File Number</div>
+              <div class="col-type">File Type</div>
               <div class="col-description">Description</div>
               <div class="col-status">Status</div>
               <div class="col-created">Created Date</div>
-              <div class="col-actions">Actions</div>
             </div>
 
-            <div v-for="fileNumber in fileNumbers" :key="fileNumber.fileId" class="list-row">
+            <div
+              v-for="fileNumber in fileNumbers"
+              :key="fileNumber.fileId"
+              class="list-row"
+              role="button"
+              tabindex="0"
+              @click="goToFileNumber(fileNumber.fileId)"
+              @keydown.enter="goToFileNumber(fileNumber.fileId)"
+              @keydown.space.prevent="goToFileNumber(fileNumber.fileId)"
+            >
               <div class="col-number">
                 <strong>{{ fileNumber.fileNumber }}</strong>
+              </div>
+              <div class="col-type">
+                {{ formatFileType(fileNumber.fileType) }}
               </div>
               <div class="col-description">
                 {{ fileNumber.description || 'No description' }}
@@ -54,9 +88,6 @@
               </div>
               <div class="col-created">
                 {{ formatDate(fileNumber.createdAt) }}
-              </div>
-              <div class="col-actions">
-                <button @click="goToFileNumber(fileNumber.fileId)" class="btn-view">View Details</button>
               </div>
             </div>
           </div>
@@ -88,6 +119,16 @@
               placeholder="Enter case description"
               rows="3"
             ></textarea>
+          </div>
+
+          <div class="form-group">
+            <label for="type">File Type</label>
+            <select v-model="newFileNumber.fileType" id="type">
+              <option value="">Select a file type</option>
+              <option value="accident-injury">Accident/Injury</option>
+              <option value="work-comp">Work Comp</option>
+              <option value="landlord-tenant">Landlord-Tenant</option>
+            </select>
           </div>
 
           <div class="form-group">
@@ -126,9 +167,24 @@ const showAddFileNumber = ref(false)
 const newFileNumber = ref({
   number: '',
   description: '',
+  fileType: '',
   court: '',
   status: 'active'
 })
+
+const formatFileType = (fileType) => {
+  if (!fileType) return 'Not set'
+  switch (fileType) {
+    case 'accident-injury':
+      return 'Accident/Injury'
+    case 'work-comp':
+      return 'Work Comp'
+    case 'landlord-tenant':
+      return 'Landlord-Tenant'
+    default:
+      return fileType
+  }
+}
 
 const formatDate = (date) => {
   return new Date(date).toLocaleDateString()
@@ -151,13 +207,14 @@ const handleAddFileNumber = async () => {
         clientId: route.params.clientId,
         fileNumber: newFileNumber.value.number,
         description: newFileNumber.value.description,
+        fileType: newFileNumber.value.fileType,
         status: newFileNumber.value.status
       })
       
       // Refresh file numbers list
       await fetchFileNumbersByClient(route.params.clientId)
       
-      newFileNumber.value = { number: '', description: '', court: '', status: 'active' }
+      newFileNumber.value = { number: '', description: '', fileType: '', court: '', status: 'active' }
       showAddFileNumber.value = false
     } catch (err) {
       console.error('Error adding file number:', err)
@@ -265,6 +322,64 @@ onMounted(async () => {
   font-size: 14px;
 }
 
+.client-details {
+  margin-bottom: 2rem;
+}
+
+.details-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.details-card h3 {
+  margin: 0 0 1rem 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 2rem;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.detail-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+.detail-value {
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.detail-notes {
+  margin-top: 1.5rem;
+}
+
+.detail-notes-body {
+  margin: 0.5rem 0 0 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  color: #374151;
+  font-size: 14px;
+  min-height: 72px;
+  white-space: pre-wrap;
+}
+
 .btn-primary {
   padding: 0.75rem 1.5rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -304,7 +419,7 @@ onMounted(async () => {
 
 .file-numbers-list .list-header {
   display: grid;
-  grid-template-columns: 1.5fr 2.5fr 1fr 1.5fr 1.2fr;
+  grid-template-columns: 1.5fr 1.4fr 2.1fr 1fr 1.5fr;
   gap: 1rem;
   padding: 1rem 1.5rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -315,16 +430,18 @@ onMounted(async () => {
 
 .file-numbers-list .list-row {
   display: grid;
-  grid-template-columns: 1.5fr 2.5fr 1fr 1.5fr 1.2fr;
+  grid-template-columns: 1.5fr 1.4fr 2.1fr 1fr 1.5fr;
   gap: 1rem;
   padding: 1.25rem 1.5rem;
   border-bottom: 1px solid #f0f0f0;
   align-items: center;
-  transition: background 0.2s;
+  transition: background 0.2s, box-shadow 0.2s;
+  cursor: pointer;
 }
 
 .file-numbers-list .list-row:hover {
   background: #f8f9ff;
+  box-shadow: inset 4px 0 0 #667eea;
 }
 
 .file-numbers-list .list-row:last-child {
@@ -342,6 +459,12 @@ onMounted(async () => {
 .col-description {
   font-size: 13px;
   color: #666;
+}
+
+.col-type {
+  font-size: 13px;
+  color: #4b5563;
+  font-weight: 600;
 }
 
 .col-status {
@@ -372,28 +495,6 @@ onMounted(async () => {
   font-size: 13px;
 }
 
-.col-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: flex-end;
-}
-
-.btn-view {
-  padding: 0.5rem 1rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.btn-view:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
-}
 
 .modal-overlay {
   position: fixed;
@@ -446,8 +547,26 @@ textarea {
   transition: border-color 0.3s;
 }
 
+select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+  font-family: inherit;
+  background: white;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
 input:focus,
 textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+select:focus {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);

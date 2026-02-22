@@ -93,7 +93,7 @@
               <select 
                 v-model="user.role" 
                 @change="handleRoleChange(user.userId, user.role)"
-                :disabled="loading || user.email === currentUser?.email"
+                :disabled="loading || user.email === props.user?.signInDetails?.loginId || props.user?.username"
                 class="role-select"
               >
                 <option value="user">User</option>
@@ -112,7 +112,7 @@
               <button 
                 @click="handleDelete(user.userId, user.name)" 
                 class="btn-delete-small" 
-                :disabled="loading || user.email === currentUser?.email"
+                :disabled="loading || user.email === props.user?.signInDetails?.loginId || props.user?.username"
                 title="Delete user"
               >
                 Delete
@@ -141,11 +141,10 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuth } from '../stores/authStore'
 import { useAdmin } from '../composables/useAdmin'
 
+const props = defineProps(['user', 'signOut', 'isAdmin'])
 const router = useRouter()
-const { currentUser, logout: authLogout } = useAuth()
 const { users, pendingUsers, loading, error, fetchAllUsers, fetchPendingUsers, approveUser, deleteUser, updateUserRole } = useAdmin()
 
 const showDeleteConfirm = ref(false)
@@ -197,15 +196,9 @@ const handleRoleChange = async (userId, newRole) => {
   }
 }
 
-const logout = () => {
-  authLogout()
-  router.replace({ name: 'Login' })
-}
-
 onMounted(async () => {
-  // Check if user is admin
-  if (!currentUser.value?.isAdmin && !currentUser.value?.groups?.includes('admin')) {
-    alert('Admin access required')
+  // Admin access is enforced by the router guard, but double-check here as a safety net
+  if (!props.isAdmin) {
     router.push({ name: 'Dashboard' })
     return
   }

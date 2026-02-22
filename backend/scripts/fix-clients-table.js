@@ -1,29 +1,26 @@
 require('dotenv').config();
-const AWS = require('aws-sdk');
+const { DynamoDBClient, DeleteTableCommand, CreateTableCommand } = require('@aws-sdk/client-dynamodb');
 
-// Configure AWS to use LocalStack
-AWS.config.update({
+const dynamodb = new DynamoDBClient({
   region: process.env.AWS_REGION || 'us-east-1',
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'test',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'test',
+  },
   endpoint: process.env.AWS_ENDPOINT_URL || 'http://localhost:4566',
-  s3ForcePathStyle: true,
-  sslEnabled: false
 });
-
-const dynamodb = new AWS.DynamoDB();
 
 const deleteTable = async () => {
   try {
     console.log('Deleting clients table...');
-    await dynamodb.deleteTable({ TableName: 'clients' }).promise();
+    await dynamodb.send(new DeleteTableCommand({ TableName: 'clients' }));
     console.log('✓ Clients table deleted');
-    
+
     // Wait a moment for deletion to complete
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
+
     console.log('Creating clients table with GSI...');
-    await dynamodb.createTable({
+    await dynamodb.send(new CreateTableCommand({
       TableName: 'clients',
       KeySchema: [{ AttributeName: 'clientId', KeyType: 'HASH' }],
       AttributeDefinitions: [
@@ -38,8 +35,8 @@ const deleteTable = async () => {
           Projection: { ProjectionType: 'ALL' }
         }
       ]
-    }).promise();
-    
+    }));
+
     console.log('✓ Clients table recreated with userIdIndex GSI');
     process.exit(0);
   } catch (error) {

@@ -1,22 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuth } from './stores/authStore'
+import { fetchAuthSession } from 'aws-amplify/auth'
 
 const routes = [
-  {
-    path: '/login',
-    name: 'Login',
-    component: () => import('./pages/LoginPage.vue')
-  },
-  {
-    path: '/auth/callback',
-    name: 'AuthCallback',
-    component: () => import('./pages/AuthCallbackPage.vue')
-  },
-  {
-    path: '/register',
-    name: 'Register',
-    component: () => import('./pages/RegisterPage.vue')
-  },
   {
     path: '/',
     redirect: '/dashboard'
@@ -88,25 +73,22 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
-  const { isAuthenticated, currentUser, initializeAuth } = useAuth()
-  initializeAuth()
-
-  if (to.meta.requiresAuth && !isAuthenticated.value) {
-    next({ name: 'Login', query: { redirect: to.fullPath } })
-    return
+// Auth is handled by the Amplify <Authenticator> in App.vue.
+// This guard only enforces admin-only routes.
+router.beforeEach(async (to, from, next) => {
+  if (to.meta.requiresAdmin) {
+    try {
+      const session = await fetchAuthSession()
+      const groups = session.tokens?.idToken?.payload['cognito:groups'] || []
+      if (!groups.includes('admin')) {
+        next({ name: 'Dashboard' })
+        return
+      }
+    } catch {
+      next({ name: 'Dashboard' })
+      return
+    }
   }
-
-  if (to.meta.requiresAdmin && !currentUser.value?.isAdmin && !currentUser.value?.groups?.includes('admin')) {
-    next({ name: 'Dashboard' })
-    return
-  }
-
-  if ((to.name === 'Login' || to.name === 'Register') && isAuthenticated.value) {
-    next({ name: 'Dashboard' })
-    return
-  }
-
   next()
 })
 

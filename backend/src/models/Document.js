@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const { dynamodb } = require('../config/aws');
+const { PutCommand, GetCommand, QueryCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
 const DOCUMENTS_TABLE = process.env.DYNAMODB_TABLE_DOCUMENTS || 'documents';
 
@@ -17,37 +18,46 @@ class Document {
       s3Key: documentData.s3Key,
       latestVersionId: documentData.latestVersionId || null,
       uploadedBy: documentData.uploadedBy,
+      extractedText: null,            // Legacy: raw extracted text (no longer stored in DynamoDB)
+      extractedTextS3Key: null,       // S3 key where extracted text is stored
+      extractedTextS3UpdatedAt: null, // ISO timestamp when extracted text was last saved to S3
+      analysis: null,                 // Short preview of AI analysis (~500 chars) for list display
+      analysisS3Key: null,            // S3 key where full AI analysis is stored
+      analysisS3UpdatedAt: null,      // ISO timestamp when analysis was last saved to S3
+      analyzedAt: null,
+      conversationHistoryS3Key: null,       // S3 key where conversation history is stored
+      conversationHistoryUpdatedAt: null,   // ISO timestamp when history was last saved to S3
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       deletedAt: null,
       deletedBy: null,
     };
 
-    await dynamodb.put({
+    await dynamodb.send(new PutCommand({
       TableName: DOCUMENTS_TABLE,
       Item: item,
-    }).promise();
+    }));
 
     return item;
   }
 
   static async listByFileId(fileId) {
-    const result = await dynamodb.query({
+    const result = await dynamodb.send(new QueryCommand({
       TableName: DOCUMENTS_TABLE,
       KeyConditionExpression: 'fileId = :fileId',
       ExpressionAttributeValues: {
         ':fileId': fileId,
       },
-    }).promise();
+    }));
 
     return (result.Items || []).filter(item => !item.deletedAt);
   }
 
   static async getById(fileId, documentId) {
-    const result = await dynamodb.get({
+    const result = await dynamodb.send(new GetCommand({
       TableName: DOCUMENTS_TABLE,
       Key: { fileId, documentId },
-    }).promise();
+    }));
 
     return result.Item || null;
   }
@@ -75,12 +85,12 @@ class Document {
       expressionAttributeValues[`:${key}`] = updateData[key];
     });
 
-    await dynamodb.update({
+    await dynamodb.send(new UpdateCommand({
       TableName: DOCUMENTS_TABLE,
       Key: { fileId, documentId },
       UpdateExpression: `SET ${updateExpression}`,
       ExpressionAttributeValues: expressionAttributeValues,
-    }).promise();
+    }));
 
     return await this.getById(fileId, documentId);
   }

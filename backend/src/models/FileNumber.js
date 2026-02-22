@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const { dynamodb } = require('../config/aws');
+const { PutCommand, GetCommand, ScanCommand, QueryCommand, UpdateCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 
 const FILE_NUMBERS_TABLE = process.env.DYNAMODB_TABLE_FILE_NUMBERS || 'file-numbers';
 
@@ -10,6 +11,7 @@ class FileNumber {
       fileId,
       fileNumber: fileData.fileNumber,
       description: fileData.description || null,
+      fileType: fileData.fileType || null,
       status: fileData.status || 'active',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -23,44 +25,44 @@ class FileNumber {
       item.clientId = fileData.clientId;
     }
 
-    await dynamodb.put({
+    await dynamodb.send(new PutCommand({
       TableName: FILE_NUMBERS_TABLE,
       Item: item,
-    }).promise();
+    }));
 
     return item;
   }
 
   static async getById(fileId) {
-    const result = await dynamodb.get({
+    const result = await dynamodb.send(new GetCommand({
       TableName: FILE_NUMBERS_TABLE,
       Key: { fileId },
-    }).promise();
+    }));
 
     return result.Item || null;
   }
 
   static async getByClientId(clientId) {
-    const result = await dynamodb.scan({
+    const result = await dynamodb.send(new ScanCommand({
       TableName: FILE_NUMBERS_TABLE,
       FilterExpression: 'clientId = :clientId',
       ExpressionAttributeValues: {
         ':clientId': clientId,
       },
-    }).promise();
+    }));
 
     return result.Items || [];
   }
 
   static async getByPackageId(packageId) {
-    const result = await dynamodb.query({
+    const result = await dynamodb.send(new QueryCommand({
       TableName: FILE_NUMBERS_TABLE,
       IndexName: 'packageIdIndex',
       KeyConditionExpression: 'packageId = :packageId',
       ExpressionAttributeValues: {
         ':packageId': packageId,
       },
-    }).promise();
+    }));
 
     return result.Items || [];
   }
@@ -73,31 +75,31 @@ class FileNumber {
         delete updateData[key];
       }
     });
-    
+
     const updateExpression = Object.keys(updateData)
       .map(key => `${key} = :${key}`)
       .join(', ');
-    
+
     const expressionAttributeValues = {};
     Object.keys(updateData).forEach(key => {
       expressionAttributeValues[`:${key}`] = updateData[key];
     });
 
-    await dynamodb.update({
+    await dynamodb.send(new UpdateCommand({
       TableName: FILE_NUMBERS_TABLE,
       Key: { fileId },
       UpdateExpression: `SET ${updateExpression}`,
       ExpressionAttributeValues: expressionAttributeValues,
-    }).promise();
+    }));
 
     return await this.getById(fileId);
   }
 
   static async delete(fileId) {
-    await dynamodb.delete({
+    await dynamodb.send(new DeleteCommand({
       TableName: FILE_NUMBERS_TABLE,
       Key: { fileId },
-    }).promise();
+    }));
   }
 }
 
