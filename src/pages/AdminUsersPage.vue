@@ -93,7 +93,7 @@
               <select 
                 v-model="user.role" 
                 @change="handleRoleChange(user.userId, user.role)"
-                :disabled="loading || user.email === props.user?.signInDetails?.loginId || props.user?.username"
+                :disabled="loading || user.email === (props.user?.signInDetails?.loginId || props.user?.username)"
                 class="role-select"
               >
                 <option value="user">User</option>
@@ -112,7 +112,7 @@
               <button 
                 @click="handleDelete(user.userId, user.name)" 
                 class="btn-delete-small" 
-                :disabled="loading || user.email === props.user?.signInDetails?.loginId || props.user?.username"
+                :disabled="loading || user.email === (props.user?.signInDetails?.loginId || props.user?.username)"
                 title="Delete user"
               >
                 Delete

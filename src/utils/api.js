@@ -12,9 +12,13 @@ class ApiClient {
   }
 
   async getCognitoToken() {
-    const { fetchAuthSession } = await import('aws-amplify/auth');
-    const session = await fetchAuthSession();
-    return session.tokens?.idToken?.toString() || session.tokens?.accessToken?.toString() || null;
+    try {
+      const { fetchAuthSession } = await import('aws-amplify/auth');
+      const session = await fetchAuthSession();
+      return session.tokens?.idToken?.toString() || session.tokens?.accessToken?.toString() || null;
+    } catch {
+      return null;
+    }
   }
 
   async request(method, endpoint, data = null) {
