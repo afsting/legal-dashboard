@@ -351,14 +351,14 @@ const analyzeDocument = async (doc) => {
   analyzingDocId.value = doc.documentId
   try {
     const result = await analyzeDoc({
-      fileId: route.params.fileNumberId,
+      fileId: doc.fileId,
       documentId: doc.documentId,
     })
     selectedDocument.value = documents.value.find(d => d.documentId === doc.documentId)
     showAnalysisModal.value = true
     try {
       const history = await fetchConversationHistory({
-        fileId: route.params.fileNumberId,
+        fileId: doc.fileId,
         documentId: doc.documentId,
       })
       selectedDocument.value = { ...selectedDocument.value, conversationHistory: history }
@@ -383,7 +383,7 @@ const viewAnalysis = async (doc) => {
   showAnalysisModal.value = true
   try {
     const history = await fetchConversationHistory({
-      fileId: route.params.fileNumberId,
+      fileId: doc.fileId,
       documentId: doc.documentId,
     })
     selectedDocument.value = { ...selectedDocument.value, conversationHistory: history }
@@ -412,7 +412,7 @@ const viewDocument = async () => {
     // Request presigned URL from backend using the shared API client.
     // This ensures Cognito session tokens (Amplify) are included correctly.
     const data = await api.post(
-      `/file-numbers/${route.params.fileNumberId}/documents/${selectedDocument.value.documentId}/presigned-url`,
+      `/file-numbers/${selectedDocument.value.fileId}/documents/${selectedDocument.value.documentId}/presigned-url`,
       {}
     )
     
@@ -435,7 +435,7 @@ const sendChatMessage = async () => {
   
   try {
     const response = await chatAboutDocument({
-      fileId: route.params.fileNumberId,
+      fileId: selectedDocument.value.fileId,
       documentId: selectedDocument.value.documentId,
       message: chatMessage.value
     })
