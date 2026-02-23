@@ -3,7 +3,7 @@ const Client = require('../models/Client');
 const clientController = {
   async create(req, res) {
     try {
-      const { name, email, phone, address, status } = req.body;
+      const { name, email, phone, address, notes, clientType, status } = req.body;
       const userId = req.user.userId;
 
       if (!name || !email) {
@@ -11,10 +11,12 @@ const clientController = {
       }
 
       const client = await Client.create(userId, {
+        clientType,
         name,
         email,
         phone,
         address,
+        notes,
         status,
       });
 

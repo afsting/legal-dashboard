@@ -81,6 +81,14 @@
         <h2>Add New Client</h2>
         <form @submit.prevent="handleCreate">
           <div class="form-group">
+            <label for="clientType">Client Type</label>
+            <select v-model="form.clientType" id="clientType">
+              <option value="individual">Individual</option>
+              <option value="business">Business</option>
+            </select>
+          </div>
+
+          <div class="form-group">
             <label for="name">Client Name *</label>
             <input
               v-model="form.name"
@@ -145,6 +153,7 @@ const showAddClient = ref(false)
 const searchQuery = ref('')
 const sortBy = ref('name')
 const form = ref({
+  clientType: 'individual',
   name: '',
   email: '',
   phone: '',
@@ -194,7 +203,7 @@ const goToClient = (clientId) => {
 const handleCreate = async () => {
   try {
     await createClient(form.value)
-    form.value = { name: '', email: '', phone: '', address: '', status: 'active' }
+    form.value = { clientType: 'individual', name: '', email: '', phone: '', address: '', status: 'active' }
     showAddClient.value = false
   } catch (err) {
     console.error('Create error:', err)

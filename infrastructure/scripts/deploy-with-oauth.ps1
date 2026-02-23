@@ -53,6 +53,14 @@ if ($envVars['FACEBOOK_APP_ID'] -and $envVars['FACEBOOK_APP_SECRET']) {
     Write-Host "  OK Facebook OAuth credentials will be used" -ForegroundColor Green
 }
 
+if ($envVars['BEDROCK_AGENT_ID'] -and $envVars['BEDROCK_AGENT_ALIAS_ID']) {
+    $cdkArgs += '-c'
+    $cdkArgs += "bedrockAgentId=$($envVars['BEDROCK_AGENT_ID'])"
+    $cdkArgs += '-c'
+    $cdkArgs += "bedrockAgentAliasId=$($envVars['BEDROCK_AGENT_ALIAS_ID'])"
+    Write-Host "  OK Bedrock agent will be used" -ForegroundColor Green
+}
+
 if ($Destroy) {
     Write-Host "`nDeploying infrastructure and DESTROYING..." -ForegroundColor Yellow
     $cdkArgs[0] = 'destroy'
@@ -70,6 +78,7 @@ Write-Host "`nDeploying infrastructure with OAuth providers..." -ForegroundColor
 if ($LASTEXITCODE -eq 0) {
     Write-Host "`nDeployment successful!" -ForegroundColor Green
     Write-Host "Google and Facebook OAuth providers are now configured in Cognito." -ForegroundColor Green
+    Write-Host "Bedrock agent is wired to the Lambda function." -ForegroundColor Green
 } else {
     Write-Host "`nDeployment failed with exit code $LASTEXITCODE" -ForegroundColor Red
     exit $LASTEXITCODE

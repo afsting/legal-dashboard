@@ -13,7 +13,7 @@ const FileNumber = require('../models/FileNumber');
 const { EXTRACTED_TEXT_BUCKET, resolveExtractedTextS3Key, resolveAnalysisS3Key, putTextToS3, getTextFromS3 } = require('../services/s3Storage');
 const { isAnalysisSupported, extractText, ensureExtractedTextAvailable } = require('../services/textExtraction');
 const { loadConversationHistory, saveConversationHistory } = require('../services/conversationService');
-const { isAgentConfigured, invokeAgent } = require('../services/bedrockService');
+const { isAgentConfigured, invokeAgent, invokeModel } = require('../services/bedrockService');
 
 const DOCUMENTS_BUCKET = process.env.S3_BUCKET_DOCUMENTS || 'legal-documents';
 const ANALYSIS_PREVIEW_CHARS = 500;
@@ -23,22 +23,25 @@ const sanitizeFileName = (fileName) => {
 };
 
 /**
- * INTENT: Parse the structured JSON response from the Bedrock chat prompt.
- * Strips markdown code fences, finds the outermost {...}, and JSON.parses it.
- * Falls back gracefully to a plain-reply shape if parsing fails.
+ * INTENT: Parse the delimiter-based response from the Bedrock chat prompt.
+ * Format avoids JSON for large text to prevent escaping failures.
+ * Expected format:
+ *   REPLY: <short reply>
+ *   UPDATED: yes|no
+ *   ===ANALYSIS===
+ *   <full updated analysis, only present when UPDATED: yes>
+ *   ===END===
  */
 function parseBedrockChatResponse(text) {
-  try {
-    const stripped = text.replace(/```json\n?|\n?```/g, '').trim();
-    const start = stripped.indexOf('{');
-    const end = stripped.lastIndexOf('}');
-    if (start !== -1 && end !== -1) {
-      return JSON.parse(stripped.slice(start, end + 1));
-    }
-  } catch {
-    // fall through to default
-  }
-  return { reply: text, analysisUpdated: false, updatedAnalysis: null };
+  const replyMatch = text.match(/^REPLY:\s*(.+?)(?=\nUPDATED:)/ms);
+  const updatedMatch = text.match(/^UPDATED:\s*(yes|no)/m);
+  const analysisMatch = text.match(/===ANALYSIS===([\s\S]*?)===END===/);
+
+  const reply = replyMatch?.[1]?.trim() || text.trim();
+  const analysisUpdated = updatedMatch?.[1] === 'yes';
+  const updatedAnalysis = analysisUpdated ? (analysisMatch?.[1]?.trim() || null) : null;
+
+  return { reply, analysisUpdated, updatedAnalysis };
 }
 
 const documentController = {
@@ -245,27 +248,48 @@ const documentController = {
         .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
         .join('\n');
 
-      let query = 'You are a legal document analyst assisting a legal professional.\n\n';
-      if (legalContext) {
-        query += `LEGAL MATTER CONTEXT: ${legalContext}\n\n`;
-      }
-      query += `CURRENT DOCUMENT ANALYSIS:\n${currentAnalysis}\n\n`;
-      query += `DOCUMENT TEXT:\n${documentText}\n\n`;
-      if (historyText) {
-        query += `PREVIOUS CONVERSATION:\n${historyText}\n\n`;
-      }
-      query += `USER MESSAGE: ${message}\n\n`;
-      query += 'Instructions:\n';
-      query += '- Answer the user\'s message clearly and helpfully.\n';
-      query += '- If the user provides corrections, identifies parties, adds factual details, or clarifies information about this specific document, incorporate those into an updated analysis.\n';
-      query += '- Only incorporate what the user explicitly states. Do not infer or add unverified details.\n';
-      query += '- If the user is only asking a question (not providing new document facts), do not update the analysis.\n\n';
-      query += 'Respond ONLY with valid JSON (no markdown, no extra text):\n';
-      query += '{"reply":"your response","analysisUpdated":true,"updatedAnalysis":"full updated analysis text"}\n';
-      query += 'OR if no analysis update is needed:\n';
-      query += '{"reply":"your response","analysisUpdated":false,"updatedAnalysis":null}';
+      const systemPrompt = [
+        'You are a legal document analyst assisting a legal professional.',
+        'Your response has two distinct sections with different purposes:',
+        '',
+        'SECTION 1 — REPLY (the chat response the user will read):',
+        '  - Respond concisely and professionally in natural language.',
+        '  - If the user asked a question, answer it here.',
+        '  - If the user provided a correction, briefly confirm it was applied (e.g. "Got it — I\'ve updated the summary to reflect the correct defendant name.").',
+        '  - Keep this to 1–3 sentences. Never include the full analysis text here.',
+        '',
+        'SECTION 2 — ANALYSIS (the document summary panel, only when updated):',
+        '  - This is the full, authoritative summary of the document displayed to the user in a separate panel.',
+        '  - When the user provides corrections or new factual information, rewrite the complete summary here incorporating those changes.',
+        '  - Write in clear, professional prose suitable for a legal professional.',
+        '  - Never reference the correction itself ("the user corrected...") — just write the updated summary as fact.',
+        '',
+        'You MUST respond using EXACTLY this format — no extra text before or after:',
+        '',
+        'REPLY: <your concise professional chat response>',
+        'UPDATED: yes|no',
+        '===ANALYSIS===',
+        '<full rewritten document summary — only include this block when UPDATED: yes>',
+        '===END===',
+        '',
+        'Rules:',
+        '- Set UPDATED to "yes" ONLY when the user provides factual corrections or new information about the document (names, dates, parties, amounts, roles, etc.).',
+        '- Set UPDATED to "no" when the user is only asking a question — omit the ===ANALYSIS=== block entirely in that case.',
+        '- Only incorporate what the user explicitly states. Do not infer or add unverified details.',
+      ].join('\n');
 
-      const rawResponse = await invokeAgent(query, `doc-chat-${fileId}-${documentId}`);
+      let userMessage = '';
+      if (legalContext) {
+        userMessage += `LEGAL MATTER CONTEXT: ${legalContext}\n\n`;
+      }
+      userMessage += `CURRENT DOCUMENT ANALYSIS:\n${currentAnalysis}\n\n`;
+      userMessage += `DOCUMENT TEXT:\n${documentText}\n\n`;
+      if (historyText) {
+        userMessage += `PREVIOUS CONVERSATION:\n${historyText}\n\n`;
+      }
+      userMessage += `USER MESSAGE: ${message}`;
+
+      const rawResponse = await invokeModel(systemPrompt, userMessage);
       const parsed = parseBedrockChatResponse(rawResponse);
       const assistantMessage = parsed.reply || rawResponse;
 

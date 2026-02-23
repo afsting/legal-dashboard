@@ -18,11 +18,18 @@
         <div class="client-header">
           <div>
             <h2>{{ client.name }}</h2>
+            <span class="client-type-badge" :class="client.clientType || 'individual'">
+              {{ client.clientType === 'business' ? 'Business' : 'Individual' }}
+            </span>
           </div>
-          <button @click="showAddFileNumber = true" class="btn-primary">+ New File Number</button>
+          <div class="header-actions">
+            <button v-if="!isEditing" @click="startEdit" class="btn-edit">Edit Client</button>
+            <button @click="showAddFileNumber = true" class="btn-primary">+ New File Number</button>
+          </div>
         </div>
 
-        <div class="client-details">
+        <!-- Read-only view -->
+        <div v-if="!isEditing" class="client-details">
           <div class="details-card">
             <h3>Client Details</h3>
             <div class="details-grid">
@@ -34,7 +41,7 @@
                 <span class="detail-label">Email</span>
                 <span class="detail-value">{{ client.email || 'Not provided' }}</span>
               </div>
-              <div class="detail-item">
+              <div class="detail-item full-width">
                 <span class="detail-label">Address</span>
                 <span class="detail-value">{{ client.address || 'No address on file' }}</span>
               </div>
@@ -46,9 +53,88 @@
           </div>
         </div>
 
+        <!-- Edit form -->
+        <div v-else class="client-details">
+          <div class="details-card">
+            <h3>Edit Client</h3>
+            <form @submit.prevent="handleSave">
+              <div class="edit-grid">
+                <div class="form-group">
+                  <label for="edit-type">Client Type</label>
+                  <select v-model="editForm.clientType" id="edit-type">
+                    <option value="individual">Individual</option>
+                    <option value="business">Business</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="edit-name">Name *</label>
+                  <input
+                    v-model="editForm.name"
+                    id="edit-name"
+                    type="text"
+                    placeholder="Client name"
+                    required
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label for="edit-email">Email *</label>
+                  <input
+                    v-model="editForm.email"
+                    id="edit-email"
+                    type="email"
+                    placeholder="Email address"
+                    required
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label for="edit-phone">Phone</label>
+                  <input
+                    v-model="editForm.phone"
+                    id="edit-phone"
+                    type="tel"
+                    placeholder="Phone number"
+                  />
+                </div>
+
+                <div class="form-group full-width">
+                  <label for="edit-address">Address</label>
+                  <input
+                    v-model="editForm.address"
+                    id="edit-address"
+                    type="text"
+                    placeholder="Street address"
+                  />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="edit-notes">Notes</label>
+                <textarea
+                  v-model="editForm.notes"
+                  id="edit-notes"
+                  placeholder="Internal notes about this client..."
+                  rows="4"
+                ></textarea>
+              </div>
+
+              <p v-if="saveError" class="save-error">{{ saveError }}</p>
+
+              <div class="edit-actions">
+                <button type="submit" class="btn-primary" :disabled="isSaving">
+                  {{ isSaving ? 'Saving...' : 'Save Changes' }}
+                </button>
+                <button type="button" @click="cancelEdit" class="btn-secondary">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
         <div class="file-numbers-section">
           <h3>File Numbers</h3>
-          
+
           <div v-if="!fileNumbers || fileNumbers.length === 0" class="empty-state">
             <p>No file numbers yet. Add a file number to get started.</p>
           </div>
@@ -102,10 +188,10 @@
         <form @submit.prevent="handleAddFileNumber">
           <div class="form-group">
             <label for="number">File Number *</label>
-            <input 
-              v-model="newFileNumber.number" 
+            <input
+              v-model="newFileNumber.number"
               id="number"
-              type="text" 
+              type="text"
               placeholder="Enter file number (e.g., 2024-001)"
               required
             />
@@ -113,8 +199,8 @@
 
           <div class="form-group">
             <label for="description">Description</label>
-            <textarea 
-              v-model="newFileNumber.description" 
+            <textarea
+              v-model="newFileNumber.description"
               id="description"
               placeholder="Enter case description"
               rows="3"
@@ -133,10 +219,10 @@
 
           <div class="form-group">
             <label for="court">Court</label>
-            <input 
-              v-model="newFileNumber.court" 
+            <input
+              v-model="newFileNumber.court"
               id="court"
-              type="text" 
+              type="text"
               placeholder="Enter court name"
             />
           </div>
@@ -159,10 +245,14 @@ import { useFileNumbers } from '../composables/useFileNumbers'
 
 const router = useRouter()
 const route = useRoute()
-const { currentClient, loading, error, fetchClientById } = useClients()
+const { currentClient, loading, error, fetchClientById, updateClient } = useClients()
 const { fileNumbers, createFileNumber, fetchFileNumbersByClient } = useFileNumbers()
 
 const client = ref(null)
+const isEditing = ref(false)
+const isSaving = ref(false)
+const saveError = ref('')
+const editForm = ref({})
 const showAddFileNumber = ref(false)
 const newFileNumber = ref({
   number: '',
@@ -172,17 +262,45 @@ const newFileNumber = ref({
   status: 'active'
 })
 
+const startEdit = () => {
+  editForm.value = {
+    clientType: client.value.clientType || 'individual',
+    name: client.value.name || '',
+    email: client.value.email || '',
+    phone: client.value.phone || '',
+    address: client.value.address || '',
+    notes: client.value.notes || '',
+  }
+  saveError.value = ''
+  isEditing.value = true
+}
+
+const cancelEdit = () => {
+  isEditing.value = false
+  saveError.value = ''
+}
+
+const handleSave = async () => {
+  isSaving.value = true
+  saveError.value = ''
+  try {
+    const updated = await updateClient(route.params.clientId, editForm.value)
+    client.value = updated
+    isEditing.value = false
+  } catch (err) {
+    saveError.value = err.message || 'Failed to save changes'
+  } finally {
+    isSaving.value = false
+  }
+}
+
 const formatFileType = (fileType) => {
   if (!fileType) return 'Not set'
   switch (fileType) {
-    case 'accident-injury':
-      return 'Accident/Injury'
-    case 'work-comp':
-      return 'Work Comp'
-    case 'landlord-tenant':
-      return 'Landlord-Tenant'
-    default:
-      return fileType
+    case 'accident-injury': return 'Accident/Injury'
+    case 'work-comp': return 'Work Comp'
+    case 'landlord-tenant': return 'Landlord-Tenant'
+    default: return fileType
   }
 }
 
@@ -191,12 +309,12 @@ const formatDate = (date) => {
 }
 
 const goToFileNumber = (fileNumberId) => {
-  router.push({ 
-    name: 'FileNumberDetail', 
-    params: { 
-      clientId: route.params.clientId, 
-      fileNumberId 
-    } 
+  router.push({
+    name: 'FileNumberDetail',
+    params: {
+      clientId: route.params.clientId,
+      fileNumberId
+    }
   })
 }
 
@@ -210,10 +328,7 @@ const handleAddFileNumber = async () => {
         fileType: newFileNumber.value.fileType,
         status: newFileNumber.value.status
       })
-      
-      // Refresh file numbers list
       await fetchFileNumbersByClient(route.params.clientId)
-      
       newFileNumber.value = { number: '', description: '', fileType: '', court: '', status: 'active' }
       showAddFileNumber.value = false
     } catch (err) {
@@ -226,8 +341,6 @@ onMounted(async () => {
   try {
     const data = await fetchClientById(route.params.clientId)
     client.value = data
-    
-    // Fetch file numbers for this client
     await fetchFileNumbersByClient(route.params.clientId)
   } catch (err) {
     console.error('Error fetching client:', err)
@@ -316,10 +429,30 @@ onMounted(async () => {
   color: #333;
 }
 
-.client-subtitle {
-  margin: 0.25rem 0;
-  color: #666;
-  font-size: 14px;
+.header-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.client-type-badge {
+  display: inline-block;
+  padding: 0.2rem 0.7rem;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.client-type-badge.individual {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.client-type-badge.business {
+  background: #d1fae5;
+  color: #065f46;
 }
 
 .client-details {
@@ -351,6 +484,10 @@ onMounted(async () => {
   gap: 0.35rem;
 }
 
+.detail-item.full-width {
+  grid-column: 1 / -1;
+}
+
 .detail-label {
   font-size: 12px;
   text-transform: uppercase;
@@ -380,20 +517,101 @@ onMounted(async () => {
   white-space: pre-wrap;
 }
 
+.edit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1.5rem;
+}
+
+.edit-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+  background: white;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.save-error {
+  color: #dc2626;
+  font-size: 13px;
+  margin: 0 0 1rem 0;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.btn-edit {
+  padding: 0.5rem 1rem;
+  background: white;
+  color: #667eea;
+  border: 1.5px solid #667eea;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-edit:hover {
+  background: #667eea;
+  color: white;
+}
+
 .btn-primary {
-  padding: 0.75rem 1.5rem;
+  padding: 0.6rem 1.25rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-weight: 600;
-  transition: transform 0.2s;
+  font-size: 14px;
+  transition: opacity 0.2s;
   white-space: nowrap;
 }
 
-.btn-primary:hover {
-  transform: translateY(-2px);
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary:not(:disabled):hover {
+  opacity: 0.9;
 }
 
 .file-numbers-section h3 {
@@ -448,28 +666,11 @@ onMounted(async () => {
   border-bottom: none;
 }
 
-.col-number {
-  font-size: 15px;
-}
-
-.col-number strong {
-  color: #333;
-}
-
-.col-description {
-  font-size: 13px;
-  color: #666;
-}
-
-.col-type {
-  font-size: 13px;
-  color: #4b5563;
-  font-weight: 600;
-}
-
-.col-status {
-  font-size: 13px;
-}
+.col-number { font-size: 15px; }
+.col-number strong { color: #333; }
+.col-description { font-size: 13px; color: #666; }
+.col-type { font-size: 13px; color: #4b5563; font-weight: 600; }
+.col-status { font-size: 13px; }
 
 .status-badge {
   display: inline-block;
@@ -480,28 +681,14 @@ onMounted(async () => {
   text-transform: uppercase;
 }
 
-.status-badge.active {
-  background: #28a745;
-  color: white;
-}
+.status-badge.active { background: #28a745; color: white; }
+.status-badge.closed { background: #6c757d; color: white; }
 
-.status-badge.closed {
-  background: #6c757d;
-  color: white;
-}
-
-.col-created {
-  color: #666;
-  font-size: 13px;
-}
-
+.col-created { color: #666; font-size: 13px; }
 
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: 0; left: 0; right: 0; bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
@@ -521,55 +708,6 @@ onMounted(async () => {
 .modal-content h2 {
   margin-top: 0;
   color: #333;
-}
-
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-label {
-  display: block;
-  margin-bottom: 0.5rem;
-  color: #333;
-  font-weight: 500;
-  font-size: 14px;
-}
-
-input,
-textarea {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 14px;
-  box-sizing: border-box;
-  font-family: inherit;
-  transition: border-color 0.3s;
-}
-
-select {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 14px;
-  box-sizing: border-box;
-  font-family: inherit;
-  background: white;
-  transition: border-color 0.3s, box-shadow 0.3s;
-}
-
-input:focus,
-textarea:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-select:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 .modal-actions {

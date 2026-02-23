@@ -1,27 +1,35 @@
 <script setup>
-import { computed, ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Authenticator } from '@aws-amplify/ui-vue'
 import { fetchAuthSession } from 'aws-amplify/auth'
 import '@aws-amplify/ui-vue/styles.css'
 import AgentSidebar from './components/AgentSidebar.vue'
+import { useBranding } from './composables/useBranding'
 
 const route = useRoute()
 
-// Store user groups from token
+// Branding — load on mount, applies CSS vars + exposes firm name/logo
+const { branding, fetchBranding } = useBranding()
+
+// Store user groups and display name from token
 const userGroups = ref([])
 const groupsLoaded = ref(false)
 const currentUser = ref(null)
+const displayName = ref('')
 
-// Fetch user groups from Cognito token
+// Fetch user groups and display name from Cognito token
 const fetchUserGroups = async () => {
   try {
     const session = await fetchAuthSession()
     const idToken = session.tokens?.idToken
     if (idToken) {
-      const groups = idToken.payload['cognito:groups'] || []
+      const payload = idToken.payload
+      const groups = payload['cognito:groups'] || []
       userGroups.value = groups
       groupsLoaded.value = true
+      // Prefer full name, fall back to email, then empty (template handles final fallback)
+      displayName.value = payload.name || payload.email || ''
       return groups
     } else {
       groupsLoaded.value = true
@@ -40,9 +48,10 @@ watch(currentUser, async (newUser) => {
   }
 })
 
-// Fetch groups on mount (when user is already signed in)
+// Fetch groups and branding on mount
 onMounted(async () => {
   await fetchUserGroups()
+  fetchBranding() // non-blocking; applies CSS vars and populates branding ref
 })
 
 // Also fetch when route changes (ensures fresh data)
@@ -92,13 +101,26 @@ const canAccessDashboard = (user) => {
 
 <template>
   <authenticator :social-providers="['google']">
+    <!-- Custom header shown on the login/signup page -->
+    <template #header>
+      <div class="login-header">
+        <img v-if="branding.logoUrl" :src="branding.logoUrl" alt="Firm logo" class="login-logo" />
+        <span v-else class="login-icon">⚖️</span>
+        <p class="login-firm-name">{{ branding.firmName || 'Legal Dashboard' }}</p>
+      </div>
+    </template>
+
     <template v-slot="{ user, signOut }">
       <div class="app" v-if="user && setCurrentUser(user)">
         <!-- Navigation Header -->
         <header class="app-header">
           <div class="header-content">
             <div class="header-left">
-              <h1 class="app-title" @click="$router.push('/')">⚖️ Legal Dashboard</h1>
+              <div class="app-title" @click="$router.push('/')">
+                <img v-if="branding.logoUrl" :src="branding.logoUrl" alt="Firm logo" class="firm-logo" />
+                <span v-else>⚖️</span>
+                <span class="firm-name">{{ branding.firmName || 'Legal Dashboard' }}</span>
+              </div>
               <nav class="main-nav">
                 <button 
                   class="nav-link" 
@@ -139,7 +161,7 @@ const canAccessDashboard = (user) => {
                 <span class="user-role" v-else>
                   ⏳ Loading...
                 </span>
-                <span class="user-email">{{ user.signInDetails?.loginId || user.username || 'User' }}</span>
+                <span class="user-email">{{ displayName || user.signInDetails?.loginId || 'User' }}</span>
               </span>
               <button @click="signOut" class="sign-out-btn">Sign Out</button>
             </div>
@@ -166,6 +188,11 @@ const canAccessDashboard = (user) => {
 
 <style>
 @import '@aws-amplify/ui-vue/styles.css';
+
+:root {
+  --brand-primary: #667eea;
+  --brand-secondary: #764ba2;
+}
 
 * {
   margin: 0;
@@ -213,15 +240,30 @@ body {
 }
 
 .app-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   margin: 0;
   font-size: 1.5rem;
+  font-weight: 700;
   color: #333;
   cursor: pointer;
   transition: transform 0.2s;
+  text-decoration: none;
 }
 
 .app-title:hover {
   transform: scale(1.05);
+}
+
+.firm-logo {
+  height: 36px;
+  max-width: 120px;
+  object-fit: contain;
+}
+
+.firm-name {
+  white-space: nowrap;
 }
 
 .main-nav {
@@ -246,7 +288,7 @@ body {
 }
 
 .nav-link.active {
-  background: #667eea;
+  background: var(--brand-primary);
   color: white;
 }
 
@@ -266,7 +308,7 @@ body {
 .user-role {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #667eea;
+  color: var(--brand-primary);
 }
 
 .user-email {
@@ -303,6 +345,32 @@ body {
 .main-content {
   flex: 1;
   overflow-x: hidden;
+}
+
+/* Login page branding header */
+.login-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem 0.5rem;
+  gap: 0.5rem;
+}
+
+.login-logo {
+  max-height: 70px;
+  max-width: 200px;
+  object-fit: contain;
+}
+
+.login-icon {
+  font-size: 2.5rem;
+}
+
+.login-firm-name {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #333;
+  margin: 0;
 }
 
 @media (max-width: 768px) {

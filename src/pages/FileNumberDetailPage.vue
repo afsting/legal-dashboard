@@ -154,7 +154,7 @@
             <h4>Ask Questions About This Document</h4>
             
             <!-- Conversation History -->
-            <div class="conversation-history">
+            <div class="conversation-history" ref="chatHistoryEl">
               <div v-for="(msg, idx) in selectedDocument?.conversationHistory" :key="idx" :class="`message ${msg.role}`">
                 <div class="message-label">{{ msg.role === 'user' ? 'You' : 'Assistant' }}</div>
                 <div class="message-content">{{ msg.content }}</div>
@@ -190,7 +190,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useFileNumbers } from '../composables/useFileNumbers'
 import { useDocuments } from '../composables/useDocuments'
@@ -217,6 +217,14 @@ const showAnalysisModal = ref(false)
 const selectedDocument = ref(null)
 const analyzingDocId = ref(null)
 const analysisJustUpdated = ref(false)
+const chatHistoryEl = ref(null)
+
+const scrollChatToBottom = async () => {
+  await nextTick()
+  if (chatHistoryEl.value) {
+    chatHistoryEl.value.scrollTop = chatHistoryEl.value.scrollHeight
+  }
+}
 
 const isDescriptionDirty = computed(() => {
   const current = fileNumber.value?.description || ''
@@ -364,6 +372,7 @@ const analyzeDocument = async (doc) => {
         documentId: doc.documentId,
       })
       selectedDocument.value = { ...selectedDocument.value, conversationHistory: history }
+      scrollChatToBottom()
     } catch (err) {
       console.error('Failed to load conversation history:', err)
     }
@@ -389,6 +398,7 @@ const viewAnalysis = async (doc) => {
       documentId: doc.documentId,
     })
     selectedDocument.value = { ...selectedDocument.value, conversationHistory: history }
+    scrollChatToBottom()
   } catch (err) {
     console.error('Failed to load conversation history:', err)
   }
@@ -458,6 +468,7 @@ const sendChatMessage = async () => {
     }
     
     chatMessage.value = ''
+    scrollChatToBottom()
   } catch (err) {
     chatError.value = err.message || 'Failed to send message'
     console.error('Chat error:', err)
@@ -806,7 +817,7 @@ onMounted(async () => {
 .modal-content {
   background: white;
   border-radius: 12px;
-  max-width: 800px;
+  max-width: 1100px;
   width: 100%;
   max-height: 80vh;
   overflow: hidden;
@@ -874,7 +885,9 @@ onMounted(async () => {
 
 .modal-body {
   padding: 2rem;
-  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .analysis-meta {
@@ -906,11 +919,13 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
-  max-height: 600px;
+  height: 100%;
+  overflow: hidden;
 }
 
 .analysis-section {
   overflow-y: auto;
+  min-height: 0;
   border-right: 1px solid #e5e7eb;
   padding-right: 15px;
 }
@@ -918,7 +933,8 @@ onMounted(async () => {
 .chat-section {
   display: flex;
   flex-direction: column;
-  overflow-y: hidden;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .chat-section h4 {
@@ -929,6 +945,7 @@ onMounted(async () => {
 
 .conversation-history {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   border: 1px solid #e5e7eb;
   border-radius: 6px;

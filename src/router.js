@@ -61,6 +61,12 @@ const routes = [
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
+    path: '/admin/branding',
+    name: 'AdminBranding',
+    component: () => import('./pages/AdminBrandingPage.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
     path: '/packages/:packageId/workflow',
     name: 'Checklist',
     component: () => import('./pages/WorkflowPage.vue'),

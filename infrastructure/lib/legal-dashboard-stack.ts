@@ -107,6 +107,15 @@ export class LegalDashboardStack extends cdk.Stack {
 
     const frontendOrigin = this.node.tryGetContext('frontendOrigin') || 'http://localhost:5174';
 
+    // All origins permitted to make direct S3 presigned PUT/GET requests (deduplicated)
+    const corsAllowedOrigins = [...new Set([
+      frontendOrigin,
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'https://d1bkh7cjshkl4w.cloudfront.net',
+      'https://d1a0t4zzh748tj.cloudfront.net',
+    ])];
+
     // Cognito User Pool with Google and Facebook OAuth
     const userPool = new cognito.UserPool(this, 'LegalDashboardUserPool', {
       userPoolName: 'legal-dashboard-users',
@@ -252,7 +261,7 @@ export class LegalDashboardStack extends cdk.Stack {
             s3.HttpMethods.DELETE,
             s3.HttpMethods.HEAD,
           ],
-          allowedOrigins: [frontendOrigin],
+          allowedOrigins: corsAllowedOrigins,
           allowedHeaders: ['*'],
           exposedHeaders: [
             'ETag',
@@ -275,6 +284,15 @@ export class LegalDashboardStack extends cdk.Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       publicReadAccess: false,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      cors: [
+        {
+          // Required for browser presigned PUT (logo uploads from Admin > Branding)
+          allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT],
+          allowedOrigins: corsAllowedOrigins,
+          allowedHeaders: ['*'],
+          maxAge: 3000,
+        },
+      ],
     });
 
     const jwtSecretContext = this.node.tryGetContext('jwtSecret');
@@ -362,6 +380,12 @@ export class LegalDashboardStack extends cdk.Stack {
         `arn:aws:bedrock:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:agent/*`,
         `arn:aws:bedrock:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:agent-alias/*`,
       ],
+    }));
+
+    // Grant Bedrock model invocation permissions (direct InvokeModel for document chat)
+    backendFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeModel'],
+      resources: [`arn:aws:bedrock:${cdk.Aws.REGION}::foundation-model/amazon.nova-pro-v1:0`],
     }));
 
     // Grant Textract permissions for document text extraction (sync and async)

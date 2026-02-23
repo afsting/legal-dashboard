@@ -3,6 +3,7 @@
     <header class="navbar">
       <h1>User Management</h1>
       <div class="nav-buttons">
+        <router-link :to="{ name: 'AdminBranding' }" class="btn-secondary">Branding</router-link>
         <router-link :to="{ name: 'Dashboard' }" class="btn-secondary">← Dashboard</router-link>
         <button @click="logout" class="btn-logout">Logout</button>
       </div>

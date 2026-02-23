@@ -10,10 +10,12 @@ class Client {
     const item = {
       clientId,
       createdBy,
+      clientType: clientData.clientType || 'individual',
       name: clientData.name,
       email: clientData.email,
       phone: clientData.phone || null,
       address: clientData.address || null,
+      notes: clientData.notes || null,
       status: clientData.status || 'active',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

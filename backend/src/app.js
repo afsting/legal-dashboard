@@ -7,6 +7,7 @@ const packageRoutes = require('./routes/packages');
 const fileNumberRoutes = require('./routes/fileNumbers');
 const workflowRoutes = require('./routes/workflows');
 const agentRoutes = require('./routes/agent');
+const settingsRoutes = require('./routes/settings');
 const { authMiddleware } = require('./middleware/auth');
 
 const app = express();
@@ -51,6 +52,7 @@ app.use('/api/packages', packageRoutes);
 app.use('/api/file-numbers', fileNumberRoutes);
 app.use('/api/workflows', workflowRoutes);
 app.use('/api/agent', agentRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Protected route example
 app.get('/api/protected', authMiddleware, (req, res) => {
