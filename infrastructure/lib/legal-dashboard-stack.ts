@@ -194,14 +194,16 @@ export class LegalDashboardStack extends cdk.Stack {
           authorizationCodeGrant: true,
         },
         callbackUrls: [
-          'http://localhost:5173/auth/callback',
-          'http://localhost:5174/auth/callback',
-          'https://d1bkh7cjshkl4w.cloudfront.net/auth/callback',
+          // Must match the redirectSignIn values in amplifyconfiguration.json exactly
+          'http://localhost:5173/',
+          'http://localhost:5174/',
+          'https://d1bkh7cjshkl4w.cloudfront.net/',
         ],
         logoutUrls: [
-          'http://localhost:5173/login',
-          'http://localhost:5174/login',
-          'https://d1bkh7cjshkl4w.cloudfront.net/login',
+          // Must match the redirectSignOut values in amplifyconfiguration.json exactly
+          'http://localhost:5173/',
+          'http://localhost:5174/',
+          'https://d1bkh7cjshkl4w.cloudfront.net/',
         ],
         scopes: [
           cognito.OAuthScope.EMAIL,
