@@ -13,7 +13,7 @@ const FileNumber = require('../models/FileNumber');
 const { EXTRACTED_TEXT_BUCKET, resolveExtractedTextS3Key, resolveAnalysisS3Key, putTextToS3, getTextFromS3 } = require('../services/s3Storage');
 const { isAnalysisSupported, extractText, ensureExtractedTextAvailable } = require('../services/textExtraction');
 const { loadConversationHistory, saveConversationHistory } = require('../services/conversationService');
-const { isAgentConfigured, invokeAgent, invokeModel } = require('../services/bedrockService');
+const { invokeModel } = require('../services/bedrockService');
 
 const DOCUMENTS_BUCKET = process.env.S3_BUCKET_DOCUMENTS || 'legal-documents';
 const ANALYSIS_PREVIEW_CHARS = 500;
@@ -221,13 +221,6 @@ const documentController = {
         });
       }
 
-      if (!isAgentConfigured()) {
-        return res.status(503).json({
-          error: 'AI chat not available',
-          message: 'Bedrock agent not configured',
-        });
-      }
-
       // Load the full current analysis so the AI can update it if needed
       let currentAnalysis = 'No analysis has been performed yet.';
       if (document.analysisS3Key) {
@@ -395,40 +388,47 @@ const documentController = {
       });
 
       // Background Bedrock analysis (fire-and-forget)
-      if (isAgentConfigured() && documentText.length < 100000) {
-        setImmediate(async () => {
-          try {
-            const fileNumber = await FileNumber.getById(fileId);
-            const legalContext = fileNumber?.description || null;
+      setImmediate(async () => {
+        try {
+          const fileNumber = await FileNumber.getById(fileId);
+          const legalContext = fileNumber?.description || null;
 
-            let query = 'Please analyze the following document';
-            if (legalContext) {
-              query += ` in the context of this legal matter: ${legalContext}`;
-            }
-            query += `\n\nDocument Name: ${document.fileName}\n\nDocument Content:\n${documentText}`;
+          const systemPrompt = [
+            'You are a legal document analyst assisting a personal injury law firm.',
+            'Analyze the provided document and produce a clear, professional summary.',
+            'Focus on: key facts, dates, parties involved, injuries or damages, medical treatment,',
+            'causation, liability indicators, and anything relevant to a demand letter or case evaluation.',
+            'Write in clear professional prose. Be thorough — this summary will be used by attorneys',
+            'to draft demand packages.',
+          ].join('\n');
 
-            const bedrockAnalysis = await invokeAgent(query, `doc-analysis-${Date.now()}`);
-
-            const analysisSKey = resolveAnalysisS3Key(fileId, documentId, document);
-            await putTextToS3(EXTRACTED_TEXT_BUCKET, analysisSKey, bedrockAnalysis);
-
-            const analysisPreview = bedrockAnalysis.length > ANALYSIS_PREVIEW_CHARS
-              ? `${bedrockAnalysis.slice(0, ANALYSIS_PREVIEW_CHARS)}…`
-              : bedrockAnalysis;
-
-            await Document.update(fileId, documentId, {
-              analysis: analysisPreview,
-              analysisS3Key: analysisSKey,
-              analysisS3UpdatedAt: new Date().toISOString(),
-              analyzedAt: new Date().toISOString(),
-            });
-
-            console.log('Background Bedrock analysis completed for document:', documentId);
-          } catch (bedrockError) {
-            console.error('Background Bedrock analysis error:', bedrockError);
+          let userMessage = '';
+          if (legalContext) {
+            userMessage += `LEGAL MATTER CONTEXT: ${legalContext}\n\n`;
           }
-        });
-      }
+          userMessage += `DOCUMENT NAME: ${document.fileName}\n\nDOCUMENT CONTENT:\n${documentText}`;
+
+          const bedrockAnalysis = await invokeModel(systemPrompt, userMessage);
+
+          const analysisSKey = resolveAnalysisS3Key(fileId, documentId, document);
+          await putTextToS3(EXTRACTED_TEXT_BUCKET, analysisSKey, bedrockAnalysis);
+
+          const analysisPreview = bedrockAnalysis.length > ANALYSIS_PREVIEW_CHARS
+            ? `${bedrockAnalysis.slice(0, ANALYSIS_PREVIEW_CHARS)}…`
+            : bedrockAnalysis;
+
+          await Document.update(fileId, documentId, {
+            analysis: analysisPreview,
+            analysisS3Key: analysisSKey,
+            analysisS3UpdatedAt: new Date().toISOString(),
+            analyzedAt: new Date().toISOString(),
+          });
+
+          console.log('Background Bedrock analysis completed for document:', documentId);
+        } catch (bedrockError) {
+          console.error('Background Bedrock analysis error:', bedrockError);
+        }
+      });
     } catch (error) {
       console.error('Analyze document error:', error);
       res.status(500).json({ error: 'Failed to analyze document', details: error.message });

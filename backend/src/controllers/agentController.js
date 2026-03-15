@@ -31,8 +31,9 @@ const FileNumber = require('../models/FileNumber');
  * @property {string} [fileNumber] - File number context if provided
  */
 
-const AGENT_ID = process.env.BEDROCK_AGENT_ID;
-const AGENT_ALIAS_ID = process.env.BEDROCK_AGENT_ALIAS_ID;
+// Prefer supervisor agent vars; fall back to legacy vars for backward compat
+const AGENT_ID = process.env.BEDROCK_SUPERVISOR_AGENT_ID || process.env.BEDROCK_AGENT_ID;
+const AGENT_ALIAS_ID = process.env.BEDROCK_SUPERVISOR_AGENT_ALIAS_ID || process.env.BEDROCK_AGENT_ALIAS_ID;
 const REGION = 'us-east-1';
 
 // ============================================================================
@@ -70,7 +71,7 @@ function validateRequest(body) {
   }
 
   if (!AGENT_ID || !AGENT_ALIAS_ID) {
-    errors.push('Bedrock agent configuration missing (BEDROCK_AGENT_ID or BEDROCK_AGENT_ALIAS_ID)');
+    errors.push('Bedrock agent configuration missing (BEDROCK_SUPERVISOR_AGENT_ID or BEDROCK_AGENT_ID)');
   }
 
   return errors;
@@ -107,26 +108,24 @@ async function buildQueryWithContext(query, clientId, fileNumberId) {
   if (clientId) {
     contextParts.push(`Client ID: ${clientId}`);
   }
-  
-  // Fetch and add actual file number string
+
+  // Fetch and add actual file number string; always include the UUID as File ID
+  // (demand sub-agent uses File ID to query DynamoDB via action group)
   if (fileNumberId) {
+    contextParts.push(`File ID: ${fileNumberId}`);
     try {
       console.log('[Agent] Fetching file number record for ID:', fileNumberId);
       const fileNumberRecord = await FileNumber.getById(fileNumberId);
       console.log('[Agent] File number record:', fileNumberRecord);
-      
+
       if (fileNumberRecord && fileNumberRecord.fileNumber) {
         console.log('[Agent] Using actual file number:', fileNumberRecord.fileNumber);
         contextParts.push(`File Number: ${fileNumberRecord.fileNumber}`);
       } else {
         console.log('[Agent] No file number found, using ID as fallback');
-        // Fallback to UUID if lookup fails
-        contextParts.push(`File Number ID: ${fileNumberId}`);
       }
     } catch (error) {
       console.error('[Agent] Failed to fetch file number:', error.message);
-      // Fallback to UUID if lookup fails
-      contextParts.push(`File Number ID: ${fileNumberId}`);
     }
   }
 

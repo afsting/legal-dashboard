@@ -28,7 +28,8 @@
         <div v-for="(msg, idx) in messages" :key="idx" :class="msg.role">
           <strong v-if="msg.role === 'user'">You:</strong>
           <strong v-else>Agent:</strong>
-          <span>{{ msg.text }}</span>
+          <span v-if="msg.role === 'user'">{{ msg.text }}</span>
+          <div v-else class="agent-markdown" v-html="renderMarkdown(msg.text)"></div>
         </div>
       </div>
 
@@ -68,6 +69,7 @@
 
 import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { marked } from 'marked'
 import api from '../utils/api'
 
 // ============================================================================
@@ -151,6 +153,18 @@ const errorDetails = ref(null)
  */
 function toggleSidebar() {
   sidebarOpen.value = !sidebarOpen.value
+}
+
+// ============================================================================
+// MARKDOWN RENDERING
+// ============================================================================
+
+/**
+ * Renders agent response text as HTML via marked.
+ * Applied to agent messages only — user messages render as plain text.
+ */
+function renderMarkdown(text) {
+  return marked.parse(text || '')
 }
 
 // ============================================================================
@@ -462,13 +476,52 @@ async function sendMessage() {
   margin-right: 8px;
 }
 
-.agent-chat-history .agent span {
+.agent-markdown {
   background: #e8f4f8;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-radius: 8px;
-  display: inline-block;
-  max-width: 85%;
+  width: 100%;
   word-wrap: break-word;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.agent-markdown :deep(p) {
+  margin: 0 0 8px 0;
+}
+
+.agent-markdown :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.agent-markdown :deep(strong) {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.agent-markdown :deep(h1),
+.agent-markdown :deep(h2),
+.agent-markdown :deep(h3) {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 12px 0 4px 0;
+}
+
+.agent-markdown :deep(h1:first-child),
+.agent-markdown :deep(h2:first-child),
+.agent-markdown :deep(h3:first-child) {
+  margin-top: 0;
+}
+
+.agent-markdown :deep(ul),
+.agent-markdown :deep(ol) {
+  margin: 4px 0 8px 16px;
+  padding: 0;
+}
+
+.agent-markdown :deep(li) {
+  margin-bottom: 2px;
 }
 
 /* ========================================================================== */

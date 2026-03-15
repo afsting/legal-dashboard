@@ -346,9 +346,23 @@ export class LegalDashboardStack extends cdk.Stack {
 
     const bedrocKAgentId = this.node.tryGetContext('bedrockAgentId') || '';
     const bedrockAgentAliasId = this.node.tryGetContext('bedrockAgentAliasId') || '';
+    const bedrockSupervisorAgentId = this.node.tryGetContext('bedrockSupervisorAgentId') || '';
+    const bedrockSupervisorAgentAliasId = this.node.tryGetContext('bedrockSupervisorAgentAliasId') || '';
+    const bedrockDemandAgentId = this.node.tryGetContext('bedrockDemandAgentId') || '';
+    const bedrockDemandAgentAliasId = this.node.tryGetContext('bedrockDemandAgentAliasId') || '';
+
+    // Collect optional agent env vars (only inject non-empty values to keep env clean)
+    const bedrockAgentEnv: Record<string, string> = {
+      BEDROCK_AGENT_ID: bedrocKAgentId,
+      BEDROCK_AGENT_ALIAS_ID: bedrockAgentAliasId,
+      ...(bedrockSupervisorAgentId && { BEDROCK_SUPERVISOR_AGENT_ID: bedrockSupervisorAgentId }),
+      ...(bedrockSupervisorAgentAliasId && { BEDROCK_SUPERVISOR_AGENT_ALIAS_ID: bedrockSupervisorAgentAliasId }),
+      ...(bedrockDemandAgentId && { BEDROCK_DEMAND_AGENT_ID: bedrockDemandAgentId }),
+      ...(bedrockDemandAgentAliasId && { BEDROCK_DEMAND_AGENT_ALIAS_ID: bedrockDemandAgentAliasId }),
+    };
 
     const backendFunction = new lambda.Function(this, 'BackendFunction', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'src/lambda.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
       memorySize: 512,
@@ -358,8 +372,7 @@ export class LegalDashboardStack extends cdk.Stack {
         ...localstackEnv,
         ...awsEnv,
         COGNITO_USER_POOL_ID: userPool.userPoolId,
-        BEDROCK_AGENT_ID: bedrocKAgentId,
-        BEDROCK_AGENT_ALIAS_ID: bedrockAgentAliasId,
+        ...bedrockAgentEnv,
       },
     });
 
@@ -403,6 +416,38 @@ export class LegalDashboardStack extends cdk.Stack {
     if (jwtSecret) {
       jwtSecret.grantRead(backendFunction);
     }
+
+    // -------------------------------------------------------------------------
+    // Demand Document Fetcher Lambda — Bedrock action group for demand sub-agent
+    // -------------------------------------------------------------------------
+
+    const demandFetcherFunction = new lambda.Function(this, 'DemandFetcherFunction', {
+      functionName: useLocalstack ? 'demand-document-fetcher-local' : undefined,
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'src/lambda/demandDocumentFetcher.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      memorySize: 256,
+      timeout: cdk.Duration.seconds(30),
+      environment: {
+        DYNAMODB_TABLE_DOCUMENTS: documentsTable.tableName,
+        S3_BUCKET_EXTRACTED_TEXT: extractedTextBucket.bucketName,
+        ...localstackEnv,
+      },
+    });
+
+    // Allow Bedrock to invoke this Lambda as an action group target
+    demandFetcherFunction.addPermission('BedrockInvokePermission', {
+      principal: new iam.ServicePrincipal('bedrock.amazonaws.com'),
+      action: 'lambda:InvokeFunction',
+    });
+
+    documentsTable.grantReadData(demandFetcherFunction);
+    extractedTextBucket.grantRead(demandFetcherFunction);
+
+    new cdk.CfnOutput(this, 'DemandFetcherFunctionArn', {
+      value: demandFetcherFunction.functionArn,
+      description: 'ARN for Demand Document Fetcher Lambda (used as Bedrock action group target)',
+    });
 
     usersTable.grantReadWriteData(backendFunction);
     clientsTable.grantReadWriteData(backendFunction);

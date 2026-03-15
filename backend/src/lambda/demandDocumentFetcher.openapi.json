@@ -1,0 +1,143 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Demand Document Fetcher",
+    "description": "Provides document listing and text retrieval for a specific legal file number, enabling the demand narrative agent to read case documents directly from S3.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/list-documents": {
+      "get": {
+        "summary": "List documents for a file number",
+        "description": "Returns all non-deleted documents for the given file number (identified by fileId). Call this first to discover which documents exist before fetching their text.",
+        "operationId": "listDocuments",
+        "parameters": [
+          {
+            "name": "fileId",
+            "in": "query",
+            "description": "The unique identifier (UUID) of the file number record. This is the File ID provided in the query context.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of documents with metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "documents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "documentId": { "type": "string" },
+                          "fileName": { "type": "string" },
+                          "contentType": { "type": "string" },
+                          "extractedTextS3Key": {
+                            "type": "string",
+                            "description": "Non-null if extracted text is available. Null means the document has not been analyzed yet."
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-document-text": {
+      "get": {
+        "summary": "Get extracted text for a document",
+        "description": "Retrieves the full extracted text content of a document. Use documentId values from listDocuments. Only documents where extractedTextS3Key is non-null will return text.",
+        "operationId": "getDocumentText",
+        "parameters": [
+          {
+            "name": "fileId",
+            "in": "query",
+            "description": "The unique identifier (UUID) of the file number record.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "documentId",
+            "in": "query",
+            "description": "The unique identifier of the specific document to retrieve.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document text content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "documentId": { "type": "string" },
+                    "fileName": { "type": "string" },
+                    "text": {
+                      "type": "string",
+                      "description": "Full extracted text of the document."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing parameter or no extracted text available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

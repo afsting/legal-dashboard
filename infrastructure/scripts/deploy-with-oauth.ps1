@@ -61,6 +61,22 @@ if ($envVars['BEDROCK_AGENT_ID'] -and $envVars['BEDROCK_AGENT_ALIAS_ID']) {
     Write-Host "  OK Bedrock agent will be used" -ForegroundColor Green
 }
 
+if ($envVars['BEDROCK_SUPERVISOR_AGENT_ID'] -and $envVars['BEDROCK_SUPERVISOR_AGENT_ALIAS_ID']) {
+    $cdkArgs += '-c'
+    $cdkArgs += "bedrockSupervisorAgentId=$($envVars['BEDROCK_SUPERVISOR_AGENT_ID'])"
+    $cdkArgs += '-c'
+    $cdkArgs += "bedrockSupervisorAgentAliasId=$($envVars['BEDROCK_SUPERVISOR_AGENT_ALIAS_ID'])"
+    Write-Host "  OK Bedrock supervisor agent will be used" -ForegroundColor Green
+}
+
+if ($envVars['BEDROCK_DEMAND_AGENT_ID'] -and $envVars['BEDROCK_DEMAND_AGENT_ALIAS_ID']) {
+    $cdkArgs += '-c'
+    $cdkArgs += "bedrockDemandAgentId=$($envVars['BEDROCK_DEMAND_AGENT_ID'])"
+    $cdkArgs += '-c'
+    $cdkArgs += "bedrockDemandAgentAliasId=$($envVars['BEDROCK_DEMAND_AGENT_ALIAS_ID'])"
+    Write-Host "  OK Bedrock demand agent IDs recorded" -ForegroundColor Green
+}
+
 if ($Destroy) {
     Write-Host "`nDeploying infrastructure and DESTROYING..." -ForegroundColor Yellow
     $cdkArgs[0] = 'destroy'

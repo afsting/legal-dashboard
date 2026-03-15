@@ -241,7 +241,7 @@ const packageButtonText = computed(() => {
 
 const packageButtonRoute = computed(() => {
   if (existingPackage.value) {
-    return { name: 'PackageDetail', params: { id: existingPackage.value.packageId } }
+    return { name: 'PackageDetail', params: { packageId: existingPackage.value.packageId } }
   }
   return { name: 'DemandPackages', params: { clientId: route.params.clientId, fileNumberId: route.params.fileNumberId } }
 })

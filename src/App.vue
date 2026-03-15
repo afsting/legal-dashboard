@@ -100,7 +100,7 @@ const canAccessDashboard = (user) => {
 </script>
 
 <template>
-  <authenticator :social-providers="['google']">
+  <authenticator :social-providers="['google', 'facebook']">
     <!-- Custom header shown on the login/signup page -->
     <template #header>
       <div class="login-header">

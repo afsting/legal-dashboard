@@ -2,6 +2,8 @@
 
 AWS CDK infrastructure for the Legal Dashboard project. Defines DynamoDB tables and S3 buckets.
 
+Note: Bedrock Knowledge Base / vector store resources are not managed by this CDK project.
+
 ## Setup
 
 1. Install dependencies:
