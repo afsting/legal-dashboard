@@ -98,6 +98,17 @@ export class LegalDashboardStack extends cdk.Stack {
       encryption: dynamodb.TableEncryption.DEFAULT,
     });
 
+    // Agent jobs table — stores async Bedrock job state so the frontend can
+    // poll for results after the API Gateway 29-second limit
+    const agentJobsTable = new dynamodb.Table(this, 'AgentJobsTable', {
+      tableName: 'agent-jobs',
+      partitionKey: { name: 'jobId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy,
+      encryption: dynamodb.TableEncryption.DEFAULT,
+      timeToLiveAttribute: 'expiresAt', // auto-expire jobs after 24 h
+    });
+
     // Add GSI for querying workflows by packageId
     workflowsTable.addGlobalSecondaryIndex({
       indexName: 'packageIdIndex',
@@ -361,6 +372,37 @@ export class LegalDashboardStack extends cdk.Stack {
       ...(bedrockDemandAgentAliasId && { BEDROCK_DEMAND_AGENT_ALIAS_ID: bedrockDemandAgentAliasId }),
     };
 
+    // -------------------------------------------------------------------------
+    // Agent Worker Lambda — runs Bedrock agent async, no APIGW timeout
+    // -------------------------------------------------------------------------
+
+    const agentWorkerFunction = new lambda.Function(this, 'AgentWorkerFunction', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'src/lambda/agentWorker.handler',
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../backend')),
+      memorySize: 512,
+      timeout: cdk.Duration.seconds(600), // 10 min — enough for any demand letter
+      environment: {
+        ...baseEnv,
+        ...localstackEnv,
+        COGNITO_USER_POOL_ID: '', // not needed by worker
+        DYNAMODB_TABLE_AGENT_JOBS: 'agent-jobs',
+        ...bedrockAgentEnv,
+      },
+    });
+
+    // Worker needs Bedrock agent invocation
+    agentWorkerFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['bedrock:InvokeAgent'],
+      resources: [
+        `arn:aws:bedrock:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:agent/*`,
+        `arn:aws:bedrock:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:agent-alias/*`,
+      ],
+    }));
+
+    agentJobsTable.grantReadWriteData(agentWorkerFunction);
+    fileNumbersTable.grantReadData(agentWorkerFunction);
+
     const backendFunction = new lambda.Function(this, 'BackendFunction', {
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'src/lambda.handler',
@@ -372,6 +414,8 @@ export class LegalDashboardStack extends cdk.Stack {
         ...localstackEnv,
         ...awsEnv,
         COGNITO_USER_POOL_ID: userPool.userPoolId,
+        DYNAMODB_TABLE_AGENT_JOBS: 'agent-jobs',
+        AGENT_WORKER_FUNCTION_NAME: agentWorkerFunction.functionName,
         ...bedrockAgentEnv,
       },
     });
@@ -455,8 +499,12 @@ export class LegalDashboardStack extends cdk.Stack {
     fileNumbersTable.grantReadWriteData(backendFunction);
     workflowsTable.grantReadWriteData(backendFunction);
     documentsTable.grantReadWriteData(backendFunction);
+    agentJobsTable.grantReadWriteData(backendFunction);
     documentsBucket.grantReadWrite(backendFunction);
     extractedTextBucket.grantReadWrite(backendFunction);
+
+    // Allow backend to invoke the worker Lambda asynchronously
+    agentWorkerFunction.grantInvoke(backendFunction);
 
     const allowedOrigins = [
       frontendOrigin,
@@ -475,6 +523,29 @@ export class LegalDashboardStack extends cdk.Stack {
         allowMethods: apigw.Cors.ALL_METHODS,
         allowHeaders: ['Content-Type', 'Authorization'],
         allowCredentials: true,
+      },
+    });
+
+    // Add CORS headers to API Gateway-generated error responses (4XX/5XX).
+    // When the Lambda times out or APIGW itself errors, Express never runs and
+    // CORS headers are missing — these GatewayResponse resources fix that.
+    const corsOriginHeader = `'${allowedOrigins[0]}'`;
+    new apigw.GatewayResponse(this, 'GatewayResponse4XX', {
+      restApi: api,
+      type: apigw.ResponseType.DEFAULT_4XX,
+      responseHeaders: {
+        'Access-Control-Allow-Origin': corsOriginHeader,
+        'Access-Control-Allow-Headers': "'Content-Type,Authorization'",
+        'Access-Control-Allow-Credentials': "'true'",
+      },
+    });
+    new apigw.GatewayResponse(this, 'GatewayResponse5XX', {
+      restApi: api,
+      type: apigw.ResponseType.DEFAULT_5XX,
+      responseHeaders: {
+        'Access-Control-Allow-Origin': corsOriginHeader,
+        'Access-Control-Allow-Headers': "'Content-Type,Authorization'",
+        'Access-Control-Allow-Credentials': "'true'",
       },
     });
 

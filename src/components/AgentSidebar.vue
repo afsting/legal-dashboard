@@ -42,7 +42,7 @@
           :disabled="loading"
         />
         <button type="submit" :disabled="loading">
-          {{ loading ? 'Sending...' : 'Send' }}
+          {{ loading ? 'Working...' : 'Send' }}
         </button>
       </form>
     </div>
@@ -221,32 +221,56 @@ function extractAnswerText(data) {
 // API COMMUNICATION
 // ============================================================================
 
+const POLL_INTERVAL_MS = 3000
+const POLL_TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
+
 /**
- * Sends query to agent endpoint with automatic page context
- * 
- * Step 1: Get current page context (clientId, fileNumberId)
- * Step 2: Send POST request to /agent/query with context
- * Step 3: Extract answer from response
- * Step 4: Return agent's response text
- * 
+ * Sends query to agent endpoint with automatic page context.
+ * Uses an async job pattern: POST returns a jobId immediately, then polls
+ * GET /agent/jobs/:jobId until the worker Lambda completes.
+ *
+ * Step 1: POST /agent/query → { jobId }
+ * Step 2: Poll GET /agent/jobs/:jobId every 3 s
+ * Step 3: Return answer when status = 'complete', throw on 'failed' / timeout
+ *
  * @param {string} query - User's question
  * @returns {Promise<string>} Agent's response
- * @throws {Error} If API call fails
+ * @throws {Error} If job fails or polling times out
  */
 async function queryAgent(query) {
   const context = pageContext.value
-  
-  console.log('[AgentSidebar] Sending query with context:', { query, context })
-  
-  const response = await api.post('/agent/query', {
+
+  console.log('[AgentSidebar] Dispatching query with context:', { query, context })
+
+  // Start the async job
+  const { jobId } = await api.post('/agent/query', {
     query,
     clientId: context.clientId,
     fileNumberId: context.fileNumberId,
   })
-  
-  console.log('[AgentSidebar] Received response:', response)
-  
-  return extractAnswerText(response)
+
+  console.log('[AgentSidebar] Job created:', jobId)
+
+  // Poll until complete, failed, or timeout
+  const deadline = Date.now() + POLL_TIMEOUT_MS
+
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
+
+    const job = await api.get(`/agent/jobs/${jobId}`)
+    console.log('[AgentSidebar] Job status:', job.status)
+
+    if (job.status === 'complete') {
+      return extractAnswerText(job)
+    }
+
+    if (job.status === 'failed') {
+      throw new Error(job.error || 'Agent job failed')
+    }
+    // status is 'pending' or 'running' — keep polling
+  }
+
+  throw new Error('Request timed out. The agent is taking longer than expected — please try again.')
 }
 
 // ============================================================================

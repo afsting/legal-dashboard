@@ -1,7 +1,37 @@
 # Task: Demand Letter — Save to Demand Package as a Document
 
-## Status: NOT STARTED
-Last updated: 2026-03-14
+## Status: READY — Prerequisite deployed ✅, ready to implement demand letter save
+Last updated: 2026-03-15
+
+---
+
+## Prerequisite: Fix API Gateway Timeout (IN PROGRESS)
+
+**Problem:** Demand letter requests fail with a CORS error because API Gateway
+has a hard 29-second integration timeout. Long Bedrock agent calls (demand
+letter with per-treatment summaries) exceed this limit, causing a 504 with no
+CORS headers.
+
+**Fix:** Async job pattern
+- `POST /api/agent/query` → creates a DynamoDB job record + fires an async
+  worker Lambda (no 29s limit) → returns `{ jobId, status: 'pending' }` immediately
+- `GET /api/agent/jobs/:jobId` → frontend polls every 3s until `status: 'complete'`
+- New files:
+  - `backend/src/models/AgentJob.js` ✅
+  - `backend/src/lambda/agentWorker.js` ✅
+  - Updated `agentController.js` ✅
+  - Updated `routes/agent.js` ✅
+  - Updated `infrastructure/lib/legal-dashboard-stack.ts` ✅ — adds
+    `agent-jobs` DynamoDB table, worker Lambda, and CORS GatewayResponse headers
+  - Updated `AgentSidebar.vue` ✅ — polling loop
+- Deployed: 2026-03-15 ✅ (CDK deploy + frontend S3 sync + CloudFront invalidation)
+- CloudFront invalidation: `IB24XGYANKSC6FXT2W2DK65OV9` (allow ~5 min to propagate)
+
+**Next step:** test demand letter in prod before implementing the save flow.
+The demand letter save logic will go in `agentWorker.js` (not `agentController.js`)
+since that is where the full Bedrock response is available after the async job runs.
+
+---
 
 ---
 
